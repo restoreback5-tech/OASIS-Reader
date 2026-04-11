@@ -78,10 +78,14 @@ class EpubParser(private val contentResolver: ContentResolver) {
             val totalLength = plainText.length
             val isMainChapter = totalLength >= MIN_CHAR_COUNT
 
+            // Extraer título del primer encabezado HTML
+            val extractedTitle = extractTitleFromHtml(rawHtml)
+
             if (isMainChapter) {
-                val title = when (mainTitles.size) {
-                    0 -> "Introducción"
-                    1 -> "Prólogo"
+                val title = when {
+                    extractedTitle != null -> extractedTitle
+                    mainTitles.size == 0 -> "Introducción"
+                    mainTitles.size == 1 -> "Prólogo"
                     else -> {
                         val romanNumber = convertToRoman(mainTitles.size - 1)
                         "Capítulo $romanNumber"
@@ -91,7 +95,8 @@ class EpubParser(private val contentResolver: ContentResolver) {
                 mainContents.add(paragraphs)
             } else {
                 val appendixIndex = appendixTitles.size + 1
-                appendixTitles.add("Apéndice $appendixIndex")
+                val title = extractedTitle ?: "Apéndice $appendixIndex"
+                appendixTitles.add(title)
                 appendixContents.add(paragraphs)
             }
         }
@@ -107,6 +112,12 @@ class EpubParser(private val contentResolver: ContentResolver) {
         }
 
         return ParsedEpub(finalTitles, finalContents)
+    }
+
+    private fun extractTitleFromHtml(html: String): String? {
+        val headerRegex = Regex("""<h[1-6][^>]*>(.*?)</h[1-6]>""", RegexOption.IGNORE_CASE)
+        val match = headerRegex.find(html)
+        return match?.groupValues?.get(1)?.let { htmlToPlainText(it) }?.takeIf { it.isNotBlank() }
     }
 
     private fun parseContainerXml(xml: String): String? {

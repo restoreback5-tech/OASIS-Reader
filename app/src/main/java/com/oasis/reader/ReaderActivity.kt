@@ -3,8 +3,12 @@ package com.oasis.reader
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.StyleSpan
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -159,8 +163,14 @@ class ReaderActivity : AppCompatActivity() {
 
     private fun showCurrentContent() {
         if (currentChapterIndex < chapterContents.size) {
+            val title = chapterTitles[currentChapterIndex]
             val paragraphs = chapterContents[currentChapterIndex]
-            tvBookContent.text = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
+            val paragraphText = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
+
+            val spannable = SpannableString("$title\n\n$paragraphText")
+            spannable.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+            tvBookContent.text = spannable
             scrollText.scrollTo(0, 0)
         }
     }
@@ -220,12 +230,12 @@ class ReaderActivity : AppCompatActivity() {
             return
         }
         val text = paragraphs[currentParagraphIndex]
-        showCurrentContent()
         tts.speak(text) {
             runOnUiThread {
                 currentParagraphIndex++
                 saveProgress()
                 readCurrentParagraph()
+                showCurrentContent()
             }
         }
     }
