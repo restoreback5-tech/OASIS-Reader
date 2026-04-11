@@ -206,48 +206,39 @@ class ReaderActivity : AppCompatActivity() {
             }
             zip3.close()
 
-            for (href in spine) {
-                val rawHtml = filesMap[href] ?: continue
-                val plainText = htmlToPlainText(rawHtml)
-                val paragraphs = plainText.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
-                if (paragraphs.isNotEmpty()) {
-                    val title = items[href]?.second ?: "Capítulo ${chapterTitles.size + 1}"
-                    chapterTitles.add(title)
-                    chapterContents.add(paragraphs)
+                    for (href in spine) {
+            val rawHtml = filesMap[href] ?: continue
+            val plainText = htmlToPlainText(rawHtml)
+            val paragraphs = plainText.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
+            if (paragraphs.isNotEmpty()) {
+                val title = when (chapterTitles.size) {
+                    0 -> "Introducción"
+                    1 -> "Prólogo"
+                    else -> {
+                        val romanNumber = convertToRoman(chapterTitles.size - 1)
+                        "Capítulo $romanNumber"
+                    }
                 }
+                chapterTitles.add(title)
+                chapterContents.add(paragraphs)
             }
-
-            if (chapterContents.isEmpty()) {
-                Toast.makeText(this, "No se pudo extraer texto del libro", Toast.LENGTH_LONG).show()
-                return
-            }
-
-            currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
-            currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
-            if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
-
-            showCurrentContent()
-            Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
         }
+
+        if (chapterContents.isEmpty()) {
+            Toast.makeText(this, "No se pudo extraer texto del libro", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
+        currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
+        if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
+
+        showCurrentContent()
+        Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
     }
-
-   private fun parseContainerXml(xml: String): String? {
-    try {
-        val factory = XmlPullParserFactory.newInstance()
-        val parser = factory.newPullParser()
-        parser.setInput(xml.reader())
-        var eventType = parser.eventType
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            if (eventType == XmlPullParser.START_TAG && parser.name == "rootfile") {
-                return parser.getAttributeValue(null, "full-path")
-            }
-            eventType = parser.next()
-        }
-    } catch (e: Exception) { e.printStackTrace() }
-    return null
 }
 
    private fun readEntryContent(zip: ZipInputStream): String = String(zip.readBytes(), Charsets.UTF_8)
@@ -483,4 +474,19 @@ class ReaderActivity : AppCompatActivity() {
         tts.shutdown()
         saveProgress()
     }
+   
+    private fun convertToRoman(num: Int): String {
+    if (num < 1) return ""
+    val values = intArrayOf(1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1)
+    val symbols = arrayOf("M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I")
+    var n = num
+    val roman = StringBuilder()
+    for (i in values.indices) {
+        while (n >= values[i]) {
+            n -= values[i]
+            roman.append(symbols[i])
+        }
+    }
+    return roman.toString()
+}
 }
