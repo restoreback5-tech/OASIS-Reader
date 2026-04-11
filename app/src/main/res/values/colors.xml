@@ -33,3 +33,7 @@
 
    <color name="settings_accent_blue">#0084FF</color>
 </resources>
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="settings_accent_blue">#0084FF</color>
+</resources>

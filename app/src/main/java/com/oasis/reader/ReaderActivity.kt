@@ -1,15 +1,19 @@
 package com.oasis.reader
 
+import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
@@ -29,6 +33,7 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var tts: TTSModule
     private lateinit var prefs: SharedPreferences
     private val REQUEST_CODE_OPEN_DOCUMENT = 1000
+    private val REQUEST_STORAGE_PERMISSION = 1001
 
     // Sliders
     private lateinit var seekSpeed: SeekBar
@@ -38,7 +43,7 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var speedValueText: TextView
     private lateinit var pitchValueText: TextView
 
-    // Temas (simplificados, sin ViewPager)
+    // Temas
     private lateinit var themeSol: View
     private lateinit var themeLuna: View
     private lateinit var themeNubes: View
@@ -91,11 +96,7 @@ class ReaderActivity : AppCompatActivity() {
 
         findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
             sound.play(R.raw.touch)
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/epub+zip"
-            }
-            startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
+            checkStoragePermissionAndOpenFile()
         }
 
         findViewById<ImageButton>(R.id.btn_play).setOnClickListener {
@@ -118,6 +119,38 @@ class ReaderActivity : AppCompatActivity() {
         if (!lastBookUri.isNullOrEmpty()) {
             currentUri = Uri.parse(lastBookUri)
             loadBookFromUri(currentUri!!)
+        }
+    }
+
+    private fun checkStoragePermissionAndOpenFile() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
+                    REQUEST_STORAGE_PERMISSION)
+                return
+            }
+        }
+        openFileSelector()
+    }
+
+    private fun openFileSelector() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/epub+zip"
+        }
+        startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_STORAGE_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                openFileSelector()
+            } else {
+                Toast.makeText(this, "Permiso de almacenamiento necesario para leer libros", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -427,11 +460,12 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun setupThemes() {
-        val themes = mapOf("amanecer" to themeSol, "caribe" to themeLuna, "oscuro" to themeNubes)
-        val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorLuna, "oscuro" to indicatorNubes)
+        // Mapeo corregido: Sol->Amanecer, Nubes->Caribe, Luna->Noche
+        val themes = mapOf("amanecer" to themeSol, "caribe" to themeNubes, "noche" to themeLuna)
+        val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorNubes, "noche" to indicatorLuna)
         themeSol.setOnClickListener { changeTheme("amanecer", themes, indicators) }
-        themeLuna.setOnClickListener { changeTheme("caribe", themes, indicators) }
-        themeNubes.setOnClickListener { changeTheme("oscuro", themes, indicators) }
+        themeLuna.setOnClickListener { changeTheme("noche", themes, indicators) }
+        themeNubes.setOnClickListener { changeTheme("caribe", themes, indicators) }
         val currentTheme = prefs.getString("selected_theme", "amanecer") ?: "amanecer"
         updateThemeUI(currentTheme, indicators)
         applyTheme(currentTheme)
@@ -452,7 +486,7 @@ class ReaderActivity : AppCompatActivity() {
     private fun applyTheme(themeKey: String) {
         val bgRes = when (themeKey) {
             "caribe" -> R.color.caribe_background
-            "oscuro" -> R.color.oscuro_background
+            "noche" -> R.color.oscuro_background   // usar mismo color oscuro
             else -> R.color.amanecer_background
         }
         window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
