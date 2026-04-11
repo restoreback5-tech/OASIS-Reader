@@ -1,4 +1,4 @@
-,package com.oasis.reader
+package com.oasis.reader
 
 import android.app.AlertDialog
 import android.content.Intent
