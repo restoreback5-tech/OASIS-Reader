@@ -217,6 +217,38 @@ class ReaderActivity : AppCompatActivity() {
         saveProgress()
     }
 
+    private fun splitTextForTts(text: String, maxLength: Int = 800): List<String> {
+        if (text.length <= maxLength) return listOf(text)
+        val sentences = text.split(Regex("(?<=[.!?])\\s+"))
+        val chunks = mutableListOf<String>()
+        val currentChunk = StringBuilder()
+        for (sentence in sentences) {
+            if (currentChunk.length + sentence.length + 1 > maxLength) {
+                if (currentChunk.isNotEmpty()) {
+                    chunks.add(currentChunk.toString().trim())
+                    currentChunk.clear()
+                }
+                if (sentence.length > maxLength) {
+                    var remaining = sentence
+                    while (remaining.length > maxLength) {
+                        val splitPos = remaining.take(maxLength).lastIndexOf(' ')
+                        val chunk = if (splitPos > 0) remaining.substring(0, splitPos) else remaining.take(maxLength)
+                        chunks.add(chunk.trim())
+                        remaining = remaining.substring(chunk.length).trimStart()
+                    }
+                    if (remaining.isNotEmpty()) currentChunk.append(remaining)
+                } else {
+                    currentChunk.append(sentence)
+                }
+            } else {
+                if (currentChunk.isNotEmpty()) currentChunk.append(" ")
+                currentChunk.append(sentence)
+            }
+        }
+        if (currentChunk.isNotEmpty()) chunks.add(currentChunk.toString().trim())
+        return chunks.ifEmpty { listOf(text) }
+    }
+
     private fun readCurrentParagraph() {
         if (!isPlaying) return
         if (currentChapterIndex >= chapterContents.size) {
@@ -240,14 +272,28 @@ class ReaderActivity : AppCompatActivity() {
             return
         }
         val text = paragraphs[currentParagraphIndex]
-        tts.speak(text) {
-            runOnUiThread {
-                currentParagraphIndex++
-                saveProgress()
-                readCurrentParagraph()
-                showCurrentContent()
+        val chunks = splitTextForTts(text)
+        var chunkIndex = 0
+
+        fun speakNextChunk() {
+            if (!isPlaying) return
+            if (chunkIndex < chunks.size) {
+                tts.speak(chunks[chunkIndex]) {
+                    runOnUiThread {
+                        chunkIndex++
+                        speakNextChunk()
+                    }
+                }
+            } else {
+                runOnUiThread {
+                    currentParagraphIndex++
+                    saveProgress()
+                    readCurrentParagraph()
+                    showCurrentContent()
+                }
             }
         }
+        speakNextChunk()
     }
 
     private fun saveProgress() {

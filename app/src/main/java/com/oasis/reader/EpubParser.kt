@@ -72,7 +72,10 @@ class EpubParser(private val contentResolver: ContentResolver) {
         for (href in spine) {
             val rawHtml = filesMap[href] ?: continue
             val plainText = htmlToPlainText(rawHtml)
-            val paragraphs = plainText.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
+            val paragraphs = splitHtmlIntoParagraphs(rawHtml)
+                .map { htmlToPlainText(it) }
+                .filter { it.isNotBlank() }
+            
             if (paragraphs.isEmpty()) continue
 
             val totalLength = plainText.length
@@ -112,6 +115,25 @@ class EpubParser(private val contentResolver: ContentResolver) {
         }
 
         return ParsedEpub(finalTitles, finalContents)
+    }
+
+    private fun splitHtmlIntoParagraphs(html: String): List<String> {
+        val paragraphs = mutableListOf<String>()
+        
+        // Eliminar contenido de <head> si existe
+        val bodyContent = html.replace(Regex("(?s)<head>.*?</head>"), "")
+        
+        // Dividir por etiquetas <p>, </p>, <div>, </div>, <br>, <h1>-<h6>
+        val parts = bodyContent.split(Regex("(?i)<p[^>]*>|</p>|<div[^>]*>|</div>|<br[^>]*>|<h[1-6][^>]*>|</h[1-6]>"))
+        
+        for (part in parts) {
+            val trimmed = part.trim()
+            if (trimmed.isNotEmpty() && !trimmed.startsWith("<") && !trimmed.endsWith(">")) {
+                paragraphs.add(trimmed)
+            }
+        }
+        
+        return if (paragraphs.isEmpty()) listOf(htmlToPlainText(html)) else paragraphs
     }
 
     private fun extractTitleFromHtml(html: String): String? {
