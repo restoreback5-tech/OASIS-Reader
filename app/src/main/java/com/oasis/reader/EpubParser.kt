@@ -15,10 +15,12 @@ class EpubParser(private val contentResolver: ContentResolver) {
     )
 
     fun parse(uri: Uri): ParsedEpub {
-        val chapterTitles = mutableListOf<String>()
-        val chapterContents = mutableListOf<List<String>>()
+        val mainTitles = mutableListOf<String>()
+        val mainContents = mutableListOf<List<String>>()
+        val appendixTitles = mutableListOf<String>()
+        val appendixContents = mutableListOf<List<String>>()
 
-        val inputStream = contentResolver.openInputStream(uri) ?: return ParsedEpub(chapterTitles, chapterContents)
+        val inputStream = contentResolver.openInputStream(uri) ?: return ParsedEpub(mainTitles, mainContents)
         val zip = ZipInputStream(inputStream)
 
         var containerXml = ""
@@ -31,9 +33,9 @@ class EpubParser(private val contentResolver: ContentResolver) {
             entry = zip.nextEntry
         }
         zip.close()
-        if (containerXml.isEmpty()) return ParsedEpub(chapterTitles, chapterContents)
+        if (containerXml.isEmpty()) return ParsedEpub(mainTitles, mainContents)
 
-        val opfPath = parseContainerXml(containerXml) ?: return ParsedEpub(chapterTitles, chapterContents)
+        val opfPath = parseContainerXml(containerXml) ?: return ParsedEpub(mainTitles, mainContents)
 
         val zip2 = ZipInputStream(contentResolver.openInputStream(uri))
         var opfContent = ""
@@ -48,10 +50,10 @@ class EpubParser(private val contentResolver: ContentResolver) {
             entry = zip2.nextEntry
         }
         zip2.close()
-        if (opfContent.isEmpty()) return ParsedEpub(chapterTitles, chapterContents)
+        if (opfContent.isEmpty()) return ParsedEpub(mainTitles, mainContents)
 
         val (items, spine) = parseOpf(opfContent, opfDir)
-        if (spine.isEmpty()) return ParsedEpub(chapterTitles, chapterContents)
+        if (spine.isEmpty()) return ParsedEpub(mainTitles, mainContents)
 
         val zip3 = ZipInputStream(contentResolver.openInputStream(uri))
         val filesMap = mutableMapOf<String, String>()
@@ -65,25 +67,46 @@ class EpubParser(private val contentResolver: ContentResolver) {
         }
         zip3.close()
 
+        val MIN_CHAR_COUNT = 500
+
         for (href in spine) {
             val rawHtml = filesMap[href] ?: continue
             val plainText = htmlToPlainText(rawHtml)
             val paragraphs = plainText.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
-            if (paragraphs.isNotEmpty()) {
-                val title = when (chapterTitles.size) {
+            if (paragraphs.isEmpty()) continue
+
+            val totalLength = plainText.length
+            val isMainChapter = totalLength >= MIN_CHAR_COUNT
+
+            if (isMainChapter) {
+                val title = when (mainTitles.size) {
                     0 -> "Introducción"
                     1 -> "Prólogo"
                     else -> {
-                        val romanNumber = convertToRoman(chapterTitles.size - 1)
+                        val romanNumber = convertToRoman(mainTitles.size - 1)
                         "Capítulo $romanNumber"
                     }
                 }
-                chapterTitles.add(title)
-                chapterContents.add(paragraphs)
+                mainTitles.add(title)
+                mainContents.add(paragraphs)
+            } else {
+                val appendixIndex = appendixTitles.size + 1
+                appendixTitles.add("Apéndice $appendixIndex")
+                appendixContents.add(paragraphs)
             }
         }
 
-        return ParsedEpub(chapterTitles, chapterContents)
+        // Combinar listas: principales primero, luego apéndices
+        val finalTitles = mutableListOf<String>().apply {
+            addAll(mainTitles)
+            addAll(appendixTitles)
+        }
+        val finalContents = mutableListOf<List<String>>().apply {
+            addAll(mainContents)
+            addAll(appendixContents)
+        }
+
+        return ParsedEpub(finalTitles, finalContents)
     }
 
     private fun parseContainerXml(xml: String): String? {
