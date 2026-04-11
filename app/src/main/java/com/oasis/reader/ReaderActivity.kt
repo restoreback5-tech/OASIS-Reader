@@ -8,14 +8,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
-import androidx.viewpager.widget.PagerAdapter
-import androidx.viewpager.widget.ViewPager
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.*
@@ -25,7 +22,6 @@ import java.util.zip.ZipInputStream
 class ReaderActivity : AppCompatActivity() {
 
     private lateinit var drawerLayout: DrawerLayout
-    private lateinit var viewPager: ViewPager
     private lateinit var scrollText: ScrollView
     private lateinit var tvBookContent: TextView
     private lateinit var btnOpenDrawer: ImageButton
@@ -42,7 +38,7 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var speedValueText: TextView
     private lateinit var pitchValueText: TextView
 
-    // Temas
+    // Temas (simplificados, sin ViewPager)
     private lateinit var themeSol: View
     private lateinit var themeLuna: View
     private lateinit var themeNubes: View
@@ -50,24 +46,13 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var indicatorLuna: ImageView
     private lateinit var indicatorNubes: ImageView
 
-    private val imageList = listOf(
-        R.drawable.pexels_ahmed,
-        R.drawable.pexels_ian_panelo,
-        R.drawable.pexels_mutceevvil,
-        R.drawable.pexels_houwang_nguyen,
-        R.drawable.pexels_crissy
-    )
-    private val handler = Handler(Looper.getMainLooper())
-    private lateinit var imagePagerAdapter: ImagePagerAdapter
-
     // Datos del libro
     private var chapterTitles = mutableListOf<String>()
-    private var chapterContents = mutableListOf<List<String>>() // cada capítulo: lista de párrafos
+    private var chapterContents = mutableListOf<List<String>>()
     private var currentChapterIndex = 0
     private var currentParagraphIndex = 0
     private var isPlaying = false
     private var currentUri: Uri? = null
-    private var lastBookUri: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,7 +63,6 @@ class ReaderActivity : AppCompatActivity() {
         tts = TTSModule(this)
 
         drawerLayout = findViewById(R.id.drawer_layout)
-        viewPager = findViewById(R.id.viewpager_images)
         scrollText = findViewById(R.id.scroll_text)
         tvBookContent = findViewById(R.id.tv_book_content)
         btnOpenDrawer = findViewById(R.id.btn_open_drawer)
@@ -102,14 +86,9 @@ class ReaderActivity : AppCompatActivity() {
             drawerLayout.openDrawer(GravityCompat.START)
         }
 
-        imagePagerAdapter = ImagePagerAdapter(imageList)
-        viewPager.adapter = imagePagerAdapter
-        startImageRotation()
-
         setupSliders()
         setupThemes()
 
-        // Botón para abrir selector de archivo EPUB
         findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
             sound.play(R.raw.touch)
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -119,7 +98,6 @@ class ReaderActivity : AppCompatActivity() {
             startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
         }
 
-        // Botón Play/Pausa
         findViewById<ImageButton>(R.id.btn_play).setOnClickListener {
             sound.play(R.raw.touch)
             if (chapterContents.isEmpty()) {
@@ -130,14 +108,13 @@ class ReaderActivity : AppCompatActivity() {
             else startReading()
         }
 
-        // Botón para mostrar lista de capítulos (índice)
         findViewById<ImageButton>(R.id.btn_chapters).setOnClickListener {
             sound.play(R.raw.touch)
             showChapterListDialog()
         }
 
         // Restaurar último libro si existe
-        lastBookUri = prefs.getString("last_book_uri", null)
+        val lastBookUri = prefs.getString("last_book_uri", null)
         if (!lastBookUri.isNullOrEmpty()) {
             currentUri = Uri.parse(lastBookUri)
             loadBookFromUri(currentUri!!)
@@ -161,7 +138,6 @@ class ReaderActivity : AppCompatActivity() {
             val inputStream = contentResolver.openInputStream(uri) ?: return
             val zip = ZipInputStream(inputStream)
 
-            // 1. Encontrar container.xml
             var containerXml = ""
             var entry = zip.nextEntry
             while (entry != null) {
@@ -172,20 +148,17 @@ class ReaderActivity : AppCompatActivity() {
                 entry = zip.nextEntry
             }
             zip.close()
-
             if (containerXml.isEmpty()) {
                 Toast.makeText(this, "No se encontró container.xml en el EPUB", Toast.LENGTH_LONG).show()
                 return
             }
 
-            // 2. Parsear container.xml para obtener la ruta del OPF
             val opfPath = parseContainerXml(containerXml)
             if (opfPath.isNullOrEmpty()) {
                 Toast.makeText(this, "No se pudo localizar el archivo OPF", Toast.LENGTH_LONG).show()
                 return
             }
 
-            // 3. Volver a abrir el ZIP para leer el OPF
             val zip2 = ZipInputStream(contentResolver.openInputStream(uri))
             var opfContent = ""
             var opfDir = ""
@@ -204,14 +177,12 @@ class ReaderActivity : AppCompatActivity() {
                 return
             }
 
-            // 4. Parsear OPF para obtener la lista de capítulos y la tabla de contenidos
             val (items, spine) = parseOpf(opfContent, opfDir)
             if (spine.isEmpty()) {
                 Toast.makeText(this, "No se encontraron capítulos en el EPUB", Toast.LENGTH_LONG).show()
                 return
             }
 
-            // 5. Leer los archivos de contenido (XHTML/HTML) y extraer texto plano
             chapterTitles.clear()
             chapterContents.clear()
             val zip3 = ZipInputStream(contentResolver.openInputStream(uri))
@@ -243,12 +214,9 @@ class ReaderActivity : AppCompatActivity() {
                 return
             }
 
-            // Restaurar progreso guardado
             currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
             currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
-            if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) {
-                currentParagraphIndex = 0
-            }
+            if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
 
             showCurrentContent()
             Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
@@ -258,10 +226,7 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
-    private fun readEntryContent(zip: ZipInputStream): String {
-        val bytes = zip.readBytes()
-        return String(bytes, Charsets.UTF_8)
-    }
+    private fun readEntryContent(zip: ZipInputStream): String = String(zip.readBytes(), Charsets.UTF_8)
 
     private fun parseContainerXml(xml: String): String? {
         try {
@@ -271,19 +236,16 @@ class ReaderActivity : AppCompatActivity() {
             var eventType = parser.eventType
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 if (eventType == XmlPullParser.START_TAG && parser.name == "rootfile") {
-                    val fullPath = parser.getAttributeValue(null, "full-path")
-                    return fullPath
+                    return parser.getAttributeValue(null, "full-path")
                 }
                 eventType = parser.next()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
         return null
     }
 
     private fun parseOpf(opfXml: String, opfDir: String): Pair<MutableMap<String, Pair<String, String>>, MutableList<String>> {
-        val items = mutableMapOf<String, Pair<String, String>>() // href -> (mime, title)
+        val items = mutableMapOf<String, Pair<String, String>>()
         val spine = mutableListOf<String>()
         try {
             val factory = XmlPullParserFactory.newInstance()
@@ -320,9 +282,7 @@ class ReaderActivity : AppCompatActivity() {
                 }
                 eventType = parser.next()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
         return Pair(items, spine)
     }
 
@@ -335,11 +295,7 @@ class ReaderActivity : AppCompatActivity() {
     private fun showCurrentContent() {
         if (currentChapterIndex < chapterContents.size) {
             val paragraphs = chapterContents[currentChapterIndex]
-            if (currentParagraphIndex < paragraphs.size) {
-                tvBookContent.text = paragraphs[currentParagraphIndex]
-            } else {
-                tvBookContent.text = paragraphs.lastOrNull() ?: ""
-            }
+            tvBookContent.text = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
             scrollText.scrollTo(0, 0)
         }
     }
@@ -349,10 +305,9 @@ class ReaderActivity : AppCompatActivity() {
             Toast.makeText(this, "No hay capítulos cargados", Toast.LENGTH_SHORT).show()
             return
         }
-        val items = chapterTitles.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle("Índice")
-            .setItems(items) { _, which ->
+            .setItems(chapterTitles.toTypedArray()) { _, which ->
                 if (which != currentChapterIndex) {
                     sound.play(R.raw.page_flip)
                     currentChapterIndex = which
@@ -404,9 +359,7 @@ class ReaderActivity : AppCompatActivity() {
             runOnUiThread {
                 currentParagraphIndex++
                 saveProgress()
-                if (currentParagraphIndex < paragraphs.size) {
-                    showCurrentContent()
-                }
+                if (currentParagraphIndex < paragraphs.size) showCurrentContent()
                 readCurrentParagraph()
             }
         }
@@ -415,18 +368,6 @@ class ReaderActivity : AppCompatActivity() {
     private fun saveProgress() {
         prefs.edit().putInt("last_chapter_index", currentChapterIndex).apply()
         prefs.edit().putInt("last_paragraph_index", currentParagraphIndex).apply()
-    }
-
-    private fun startImageRotation() {
-        val runnable = object : Runnable {
-            override fun run() {
-                val currentItem = viewPager.currentItem
-                val nextItem = if (currentItem + 1 < imageList.size) currentItem + 1 else 0
-                viewPager.setCurrentItem(nextItem, true)
-                handler.postDelayed(this, 5000)
-            }
-        }
-        handler.postDelayed(runnable, 5000)
     }
 
     private fun setupSliders() {
@@ -462,7 +403,7 @@ class ReaderActivity : AppCompatActivity() {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) sound.play(R.raw.deslizar)
                 val alpha = progress / 100f
-                findViewById<View>(R.id.viewpager_images).alpha = alpha
+                findViewById<View>(R.id.scroll_text).alpha = alpha
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
@@ -488,21 +429,15 @@ class ReaderActivity : AppCompatActivity() {
     private fun setupThemes() {
         val themes = mapOf("amanecer" to themeSol, "caribe" to themeLuna, "oscuro" to themeNubes)
         val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorLuna, "oscuro" to indicatorNubes)
-        themeSol.setOnClickListener { setTheme("amanecer", themes, indicators) }
-        themeLuna.setOnClickListener { setTheme("caribe", themes, indicators) }
-        themeNubes.setOnClickL
-
-    private fun setupThemes() {
-        val themes = mapOf("amanecer" to themeSol, "caribe" to themeLuna, "oscuro" to themeNubes)
-        val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorLuna, "oscuro" to indicatorNubes)
-        themeSol.setOnClickListener { setTheme("amanecer", themes, indicators) }
-        themeLuna.setOnClickListener { setTheme("caribe", themes, indicators) }
-        themeNubes.setOnClickListener { setTheme("oscuro", themes, indicators) }
+        themeSol.setOnClickListener { changeTheme("amanecer", themes, indicators) }
+        themeLuna.setOnClickListener { changeTheme("caribe", themes, indicators) }
+        themeNubes.setOnClickListener { changeTheme("oscuro", themes, indicators) }
         val currentTheme = prefs.getString("selected_theme", "amanecer") ?: "amanecer"
         updateThemeUI(currentTheme, indicators)
+        applyTheme(currentTheme)
     }
 
-    private fun setTheme(themeKey: String, themes: Map<String, View>, indicators: Map<String, ImageView>) {
+    private fun changeTheme(themeKey: String, themes: Map<String, View>, indicators: Map<String, ImageView>) {
         sound.play(R.raw.check_on)
         prefs.edit().putString("selected_theme", themeKey).apply()
         updateThemeUI(themeKey, indicators)
@@ -523,24 +458,8 @@ class ReaderActivity : AppCompatActivity() {
         window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
     }
 
-    inner class ImagePagerAdapter(private val images: List<Int>) : PagerAdapter() {
-        override fun getCount(): Int = images.size
-        override fun isViewFromObject(view: View, obj: Any): Boolean = view == obj
-        override fun instantiateItem(container: ViewGroup, position: Int): Any {
-            val imageView = ImageView(this@ReaderActivity)
-            imageView.setImageResource(images[position])
-            imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-            container.addView(imageView)
-            return imageView
-        }
-        override fun destroyItem(container: ViewGroup, position: Int, obj: Any) {
-            container.removeView(obj as View)
-        }
-    }
-
     override fun onDestroy() {
         super.onDestroy()
-        handler.removeCallbacksAndMessages(null)
         sound.release()
         tts.shutdown()
         saveProgress()
