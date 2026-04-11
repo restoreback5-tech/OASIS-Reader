@@ -1,27 +1,16 @@
-package com.oasis.reader
+,package com.oasis.reader
 
-import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
-import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlPullParserFactory
-import java.io.*
-import java.util.*
-import java.util.zip.ZipInputStream
 
 class ReaderActivity : AppCompatActivity() {
 
@@ -58,6 +47,9 @@ class ReaderActivity : AppCompatActivity() {
     private var isPlaying = false
     private var currentUri: Uri? = null
 
+    // Parser EPUB
+    private lateinit var epubParser: EpubParser
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_reader)
@@ -65,6 +57,7 @@ class ReaderActivity : AppCompatActivity() {
         prefs = getSharedPreferences("oasis_settings", MODE_PRIVATE)
         sound = SoundModule(this)
         tts = TTSModule(this)
+        epubParser = EpubParser(contentResolver)
 
         drawerLayout = findViewById(R.id.drawer_layout)
         scrollText = findViewById(R.id.scroll_text)
@@ -93,10 +86,10 @@ class ReaderActivity : AppCompatActivity() {
         setupSliders()
         setupThemes()
 
-	findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
-    sound.play(R.raw.touch)
-    openFileSelector()
-}
+        findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
+            sound.play(R.raw.touch)
+            openFileSelector()
+        }
 
         findViewById<ImageButton>(R.id.btn_play).setOnClickListener {
             sound.play(R.raw.touch)
@@ -134,163 +127,34 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun openFileSelector() {
-    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-        addCategory(Intent.CATEGORY_OPENABLE)
-        type = "application/epub+zip"
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/epub+zip"
+        }
+        startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
     }
-    startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
-}
 
     private fun loadBookFromUri(uri: Uri) {
         try {
-            val inputStream = contentResolver.openInputStream(uri) ?: return
-            val zip = ZipInputStream(inputStream)
-
-            var containerXml = ""
-            var entry = zip.nextEntry
-            while (entry != null) {
-                if (entry.name.equals("META-INF/container.xml", ignoreCase = true)) {
-                    containerXml = readEntryContent(zip)
-                    break
-                }
-                entry = zip.nextEntry
-            }
-            zip.close()
-            if (containerXml.isEmpty()) {
-                Toast.makeText(this, "No se encontró container.xml en el EPUB", Toast.LENGTH_LONG).show()
-                return
-            }
-
-            val opfPath = parseContainerXml(containerXml)
-            if (opfPath.isNullOrEmpty()) {
-                Toast.makeText(this, "No se pudo localizar el archivo OPF", Toast.LENGTH_LONG).show()
-                return
-            }
-
-            val zip2 = ZipInputStream(contentResolver.openInputStream(uri))
-            var opfContent = ""
-            var opfDir = ""
-            entry = zip2.nextEntry
-            while (entry != null) {
-                if (entry.name.equals(opfPath, ignoreCase = true)) {
-                    opfContent = readEntryContent(zip2)
-                    opfDir = opfPath?.let { File(it).parent } ?: ""
-                    break
-                }
-                entry = zip2.nextEntry
-            }
-            zip2.close()
-            if (opfContent.isEmpty()) {
-                Toast.makeText(this, "No se pudo leer el archivo OPF", Toast.LENGTH_LONG).show()
-                return
-            }
-
-            val (items, spine) = parseOpf(opfContent, opfDir)
-            if (spine.isEmpty()) {
+            val parsed = epubParser.parse(uri)
+            if (parsed.chapterContents.isEmpty()) {
                 Toast.makeText(this, "No se encontraron capítulos en el EPUB", Toast.LENGTH_LONG).show()
                 return
             }
 
-            chapterTitles.clear()
-            chapterContents.clear()
-            val zip3 = ZipInputStream(contentResolver.openInputStream(uri))
-            val filesMap = mutableMapOf<String, String>()
-            entry = zip3.nextEntry
-            while (entry != null) {
-                val name = entry.name
-                if (items.containsKey(name)) {
-                    val content = readEntryContent(zip3)
-                    filesMap[name] = content
-                }
-                entry = zip3.nextEntry
-            }
-            zip3.close()
+            chapterTitles = parsed.chapterTitles
+            chapterContents = parsed.chapterContents
 
-                    for (href in spine) {
-            val rawHtml = filesMap[href] ?: continue
-            val plainText = htmlToPlainText(rawHtml)
-            val paragraphs = plainText.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
-            if (paragraphs.isNotEmpty()) {
-                val title = when (chapterTitles.size) {
-                    0 -> "Introducción"
-                    1 -> "Prólogo"
-                    else -> {
-                        val romanNumber = convertToRoman(chapterTitles.size - 1)
-                        "Capítulo $romanNumber"
-                    }
-                }
-                chapterTitles.add(title)
-                chapterContents.add(paragraphs)
-            }
+            currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
+            currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
+            if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
+
+            showCurrentContent()
+            Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
         }
-
-        if (chapterContents.isEmpty()) {
-            Toast.makeText(this, "No se pudo extraer texto del libro", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
-        currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
-        if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
-
-        showCurrentContent()
-        Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
-        e.printStackTrace()
-        Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
-    }
-}
-
-   private fun readEntryContent(zip: ZipInputStream): String = String(zip.readBytes(), Charsets.UTF_8)
-
-    private fun parseOpf(opfXml: String, opfDir: String): Pair<MutableMap<String, Pair<String, String>>, MutableList<String>> {
-    val items = mutableMapOf<String, Pair<String, String>>() // href -> (mediaType, title)
-    val idToHref = mutableMapOf<String, String>() // id -> href
-    val spine = mutableListOf<String>()
-    try {
-        val factory = XmlPullParserFactory.newInstance()
-        val parser = factory.newPullParser()
-        parser.setInput(opfXml.reader())
-        var eventType = parser.eventType
-        var insideSpine = false
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            when (eventType) {
-                XmlPullParser.START_TAG -> {
-                    when (parser.name) {
-                        "item" -> {
-                            val id = parser.getAttributeValue(null, "id")
-                            val href = parser.getAttributeValue(null, "href")
-                            val mediaType = parser.getAttributeValue(null, "media-type")
-                            if (href != null && (mediaType?.contains("xhtml") == true || mediaType?.contains("html") == true)) {
-                                val fullHref = if (opfDir.isNotEmpty()) "$opfDir/$href" else href
-                                items[fullHref] = Pair(mediaType ?: "", "")
-                                if (id != null) idToHref[id] = fullHref
-                            }
-                        }
-                        "itemref" -> {
-                            if (insideSpine) {
-                                val idref = parser.getAttributeValue(null, "idref")
-                                val href = idToHref[idref]
-                                if (href != null) spine.add(href)
-                            }
-                        }
-                        "spine" -> insideSpine = true
-                    }
-                }
-                XmlPullParser.END_TAG -> {
-                    if (parser.name == "spine") insideSpine = false
-                }
-            }
-            eventType = parser.next()
-        }
-    } catch (e: Exception) { e.printStackTrace() }
-    return Pair(items, spine)
-}
-
-    private fun htmlToPlainText(html: String): String {
-        return html.replace(Regex("<[^>]*>"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
     }
 
     private fun showCurrentContent() {
@@ -356,11 +220,11 @@ class ReaderActivity : AppCompatActivity() {
             return
         }
         val text = paragraphs[currentParagraphIndex]
+        showCurrentContent()
         tts.speak(text) {
             runOnUiThread {
                 currentParagraphIndex++
                 saveProgress()
-                if (currentParagraphIndex < paragraphs.size) showCurrentContent()
                 readCurrentParagraph()
             }
         }
@@ -428,7 +292,6 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun setupThemes() {
-        // Mapeo corregido: Sol->Amanecer, Nubes->Caribe, Luna->Noche
         val themes = mapOf("amanecer" to themeSol, "caribe" to themeNubes, "noche" to themeLuna)
         val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorNubes, "noche" to indicatorLuna)
         themeSol.setOnClickListener { changeTheme("amanecer", themes, indicators) }
@@ -452,21 +315,21 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun applyTheme(themeKey: String) {
-    val bgRes = when (themeKey) {
-        "caribe" -> R.color.caribe_background
-        "noche" -> R.color.oscuro_background   // usar mismo color oscuro
-        else -> R.color.amanecer_background
-    }
-    window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
+        val bgRes = when (themeKey) {
+            "caribe" -> R.color.caribe_background
+            "noche" -> R.color.oscuro_background
+            else -> R.color.amanecer_background
+        }
+        window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
 
-    val textColorRes = when (themeKey) {
-        "amanecer" -> R.color.amanecer_text
-        "caribe" -> R.color.caribe_text
-        "noche" -> R.color.oscuro_text
-        else -> R.color.amanecer_text
+        val textColorRes = when (themeKey) {
+            "amanecer" -> R.color.amanecer_text
+            "caribe" -> R.color.caribe_text
+            "noche" -> R.color.oscuro_text
+            else -> R.color.amanecer_text
+        }
+        tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
     }
-    tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
-}
 
     override fun onDestroy() {
         super.onDestroy()
@@ -474,19 +337,4 @@ class ReaderActivity : AppCompatActivity() {
         tts.shutdown()
         saveProgress()
     }
-   
-    private fun convertToRoman(num: Int): String {
-    if (num < 1) return ""
-    val values = intArrayOf(1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1)
-    val symbols = arrayOf("M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I")
-    var n = num
-    val roman = StringBuilder()
-    for (i in values.indices) {
-        while (n >= values[i]) {
-            n -= values[i]
-            roman.append(symbols[i])
-        }
-    }
-    return roman.toString()
-}
 }
