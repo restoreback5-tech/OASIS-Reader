@@ -3,17 +3,17 @@
     <font
         android:fontStyle="normal"
         android:fontWeight="400"
-        android:font="@font/sf_pro_display_regular" />
+        android:font="@font/googlesans_regular" />
     <font
         android:fontStyle="normal"
         android:fontWeight="500"
-        android:font="@font/sf_pro_display_medium" />
+        android:font="@font/googlesans_medium" />
     <font
         android:fontStyle="normal"
         android:fontWeight="600"
-        android:font="@font/sf_pro_display_medium" />
+        android:font="@font/googlesans_semibold" />
     <font
         android:fontStyle="normal"
         android:fontWeight="700"
-        android:font="@font/sf_pro_display_bold" />
+        android:font="@font/googlesans_bold" />
 </font-family>

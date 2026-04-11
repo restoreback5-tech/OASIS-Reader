@@ -6,24 +6,15 @@
     android:layout_height="match_parent"
     android:fitsSystemWindows="true">
 
-    <!-- Contenido principal -->
+    <!-- Contenido principal (texto del libro) -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <!-- ViewPager para imágenes (cuando no hay libro) -->
-        <androidx.viewpager.widget.ViewPager
-            android:id="@+id/viewpager_images"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="visible" />
-
-        <!-- ScrollView para texto del libro (cuando hay libro cargado) -->
         <ScrollView
             android:id="@+id/scroll_text"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:visibility="gone"
             android:scrollbars="vertical">
 
             <TextView
@@ -37,7 +28,7 @@
 
         </ScrollView>
 
-        <!-- Botón para abrir el panel lateral (opcional) -->
+        <!-- Botón para abrir el panel lateral -->
         <ImageButton
             android:id="@+id/btn_open_drawer"
             android:layout_width="48dp"
@@ -47,17 +38,9 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:tint="@android:color/white" />
 
-	<ImageButton
-  	    android:id="@+id/btn_chapters"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-   	    android:src="@android:drawable/ic_menu_sort_by_size"
-   	    android:background="?attr/selectableItemBackgroundBorderless"
-	    android:tint="@color/settings_accent_blue" />
-
     </FrameLayout>
 
-    <!-- Panel lateral (controles) -->
+    <!-- Panel lateral -->
     <LinearLayout
         android:layout_width="300dp"
         android:layout_height="match_parent"
@@ -156,7 +139,7 @@
 
         <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
 
-        <!-- Slider de velocidad -->
+        <!-- Velocidad de voz -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -182,7 +165,7 @@
             android:textColor="#1C1C1E"
             android:gravity="center" />
 
-        <!-- Slider de tono -->
+        <!-- Tono de voz -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -209,7 +192,7 @@
             android:textColor="#1C1C1E"
             android:gravity="center" />
 
-        <!-- Slider de brillo placebo -->
+        <!-- Brillo placebo -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -225,7 +208,7 @@
             android:max="100"
             android:progress="100" />
 
-        <!-- Slider de tamaño de texto -->
+        <!-- Tamaño de texto -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -243,25 +226,37 @@
 
         <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
 
-        <!-- Botones Play y Libro -->
+        <!-- Botones Play, Capítulos y Libro -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center">
+            android:gravity="center"
+            android:weightSum="3">
 
             <ImageButton
                 android:id="@+id/btn_play"
-                android:layout_width="56dp"
+                android:layout_width="0dp"
                 android:layout_height="56dp"
+                android:layout_weight="1"
                 android:src="@android:drawable/ic_media_play"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:tint="@color/settings_accent_blue" />
 
             <ImageButton
-                android:id="@+id/btn_book"
-                android:layout_width="56dp"
+                android:id="@+id/btn_chapters"
+                android:layout_width="0dp"
                 android:layout_height="56dp"
+                android:layout_weight="1"
+                android:src="@android:drawable/ic_menu_sort_by_size"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:tint="@color/settings_accent_blue" />
+
+            <ImageButton
+                android:id="@+id/btn_book"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
                 android:src="@android:drawable/ic_menu_edit"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:tint="@color/settings_accent_blue" />

@@ -1,3 +1,6 @@
+package com.oasis.reader
+
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
@@ -229,7 +232,6 @@ class ReaderActivity : AppCompatActivity() {
                 val plainText = htmlToPlainText(rawHtml)
                 val paragraphs = plainText.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
                 if (paragraphs.isNotEmpty()) {
-                    // Intentar obtener título del NCX o usar "Capítulo X"
                     val title = items[href]?.second ?: "Capítulo ${chapterTitles.size + 1}"
                     chapterTitles.add(title)
                     chapterContents.add(paragraphs)
@@ -305,7 +307,6 @@ class ReaderActivity : AppCompatActivity() {
                             "itemref" -> {
                                 if (insideSpine) {
                                     val idref = parser.getAttributeValue(null, "idref")
-                                    // Buscar el href correspondiente al idref
                                     val href = items.entries.find { it.value.first == idref }?.key
                                     if (href != null) spine.add(href)
                                 }
@@ -326,7 +327,6 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun htmlToPlainText(html: String): String {
-        // Eliminar etiquetas HTML y normalizar espacios
         return html.replace(Regex("<[^>]*>"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
@@ -368,7 +368,6 @@ class ReaderActivity : AppCompatActivity() {
     private fun startReading() {
         if (chapterContents.isEmpty()) return
         isPlaying = true
-        // Cambiar icono a pausa (opcional)
         readCurrentParagraph()
     }
 
@@ -387,7 +386,6 @@ class ReaderActivity : AppCompatActivity() {
         }
         val paragraphs = chapterContents[currentChapterIndex]
         if (currentParagraphIndex >= paragraphs.size) {
-            // Fin del capítulo, pasar al siguiente
             sound.play(R.raw.page_flip)
             currentParagraphIndex = 0
             currentChapterIndex++
@@ -407,7 +405,6 @@ class ReaderActivity : AppCompatActivity() {
                 currentParagraphIndex++
                 saveProgress()
                 if (currentParagraphIndex < paragraphs.size) {
-                    // Mostrar el siguiente párrafo en pantalla (opcional)
                     showCurrentContent()
                 }
                 readCurrentParagraph()
@@ -431,8 +428,8 @@ class ReaderActivity : AppCompatActivity() {
         }
         handler.postDelayed(runnable, 5000)
     }
- 
-  private fun setupSliders() {
+
+    private fun setupSliders() {
         seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
@@ -487,6 +484,13 @@ class ReaderActivity : AppCompatActivity() {
         speedValueText.text = String.format("%.1fx", savedSpeed)
         pitchValueText.text = String.format("%.1fx", savedPitch)
     }
+
+    private fun setupThemes() {
+        val themes = mapOf("amanecer" to themeSol, "caribe" to themeLuna, "oscuro" to themeNubes)
+        val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorLuna, "oscuro" to indicatorNubes)
+        themeSol.setOnClickListener { setTheme("amanecer", themes, indicators) }
+        themeLuna.setOnClickListener { setTheme("caribe", themes, indicators) }
+        themeNubes.setOnClickListener { setTheme("os
 
     private fun setupThemes() {
         val themes = mapOf("amanecer" to themeSol, "caribe" to themeLuna, "oscuro" to themeNubes)
