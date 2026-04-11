@@ -122,6 +122,16 @@ class ReaderActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_CODE_OPEN_DOCUMENT && resultCode == RESULT_OK) {
             data?.data?.let { uri ->
+                // Persistir permiso de lectura para futuros accesos
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (e: SecurityException) {
+                    e.printStackTrace()
+                }
+
                 sound.play(R.raw.confirmar)
                 currentUri = uri
                 prefs.edit().putString("last_book_uri", uri.toString()).apply()
