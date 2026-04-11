@@ -174,7 +174,7 @@ class ReaderActivity : AppCompatActivity() {
             while (entry != null) {
                 if (entry.name.equals(opfPath, ignoreCase = true)) {
                     opfContent = readEntryContent(zip2)
-                    opfDir = File(opfPath).parent ?: ""
+                    opfDir = opfPath?.let { File(it).parent } ?: ""
                     break
                 }
                 entry = zip2.nextEntry
@@ -233,6 +233,22 @@ class ReaderActivity : AppCompatActivity() {
             Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
+
+   private fun parseContainerXml(xml: String): String? {
+    try {
+        val factory = XmlPullParserFactory.newInstance()
+        val parser = factory.newPullParser()
+        parser.setInput(xml.reader())
+        var eventType = parser.eventType
+        while (eventType != XmlPullParser.END_DOCUMENT) {
+            if (eventType == XmlPullParser.START_TAG && parser.name == "rootfile") {
+                return parser.getAttributeValue(null, "full-path")
+            }
+            eventType = parser.next()
+        }
+    } catch (e: Exception) { e.printStackTrace() }
+    return null
+}
 
    private fun readEntryContent(zip: ZipInputStream): String = String(zip.readBytes(), Charsets.UTF_8)
 
