@@ -234,65 +234,51 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
-    private fun readEntryContent(zip: ZipInputStream): String = String(zip.readBytes(), Charsets.UTF_8)
-
-    private fun parseContainerXml(xml: String): String? {
-        try {
-            val factory = XmlPullParserFactory.newInstance()
-            val parser = factory.newPullParser()
-            parser.setInput(xml.reader())
-            var eventType = parser.eventType
-            while (eventType != XmlPullParser.END_DOCUMENT) {
-                if (eventType == XmlPullParser.START_TAG && parser.name == "rootfile") {
-                    return parser.getAttributeValue(null, "full-path")
-                }
-                eventType = parser.next()
-            }
-        } catch (e: Exception) { e.printStackTrace() }
-        return null
-    }
+   private fun readEntryContent(zip: ZipInputStream): String = String(zip.readBytes(), Charsets.UTF_8)
 
     private fun parseOpf(opfXml: String, opfDir: String): Pair<MutableMap<String, Pair<String, String>>, MutableList<String>> {
-        val items = mutableMapOf<String, Pair<String, String>>()
-        val spine = mutableListOf<String>()
-        try {
-            val factory = XmlPullParserFactory.newInstance()
-            val parser = factory.newPullParser()
-            parser.setInput(opfXml.reader())
-            var eventType = parser.eventType
-            var insideSpine = false
-            while (eventType != XmlPullParser.END_DOCUMENT) {
-                when (eventType) {
-                    XmlPullParser.START_TAG -> {
-                        when (parser.name) {
-                            "item" -> {
-                                val id = parser.getAttributeValue(null, "id")
-                                val href = parser.getAttributeValue(null, "href")
-                                val mediaType = parser.getAttributeValue(null, "media-type")
-                                if (href != null && (mediaType?.contains("xhtml") == true || mediaType?.contains("html") == true)) {
-                                    val fullHref = if (opfDir.isNotEmpty()) "$opfDir/$href" else href
-                                    items[fullHref] = Pair(mediaType ?: "", "")
-                                }
+    val items = mutableMapOf<String, Pair<String, String>>() // href -> (mediaType, title)
+    val idToHref = mutableMapOf<String, String>() // id -> href
+    val spine = mutableListOf<String>()
+    try {
+        val factory = XmlPullParserFactory.newInstance()
+        val parser = factory.newPullParser()
+        parser.setInput(opfXml.reader())
+        var eventType = parser.eventType
+        var insideSpine = false
+        while (eventType != XmlPullParser.END_DOCUMENT) {
+            when (eventType) {
+                XmlPullParser.START_TAG -> {
+                    when (parser.name) {
+                        "item" -> {
+                            val id = parser.getAttributeValue(null, "id")
+                            val href = parser.getAttributeValue(null, "href")
+                            val mediaType = parser.getAttributeValue(null, "media-type")
+                            if (href != null && (mediaType?.contains("xhtml") == true || mediaType?.contains("html") == true)) {
+                                val fullHref = if (opfDir.isNotEmpty()) "$opfDir/$href" else href
+                                items[fullHref] = Pair(mediaType ?: "", "")
+                                if (id != null) idToHref[id] = fullHref
                             }
-                            "itemref" -> {
-                                if (insideSpine) {
-                                    val idref = parser.getAttributeValue(null, "idref")
-                                    val href = items.entries.find { it.value.first == idref }?.key
-                                    if (href != null) spine.add(href)
-                                }
-                            }
-                            "spine" -> insideSpine = true
                         }
-                    }
-                    XmlPullParser.END_TAG -> {
-                        if (parser.name == "spine") insideSpine = false
+                        "itemref" -> {
+                            if (insideSpine) {
+                                val idref = parser.getAttributeValue(null, "idref")
+                                val href = idToHref[idref]
+                                if (href != null) spine.add(href)
+                            }
+                        }
+                        "spine" -> insideSpine = true
                     }
                 }
-                eventType = parser.next()
+                XmlPullParser.END_TAG -> {
+                    if (parser.name == "spine") insideSpine = false
+                }
             }
-        } catch (e: Exception) { e.printStackTrace() }
-        return Pair(items, spine)
-    }
+            eventType = parser.next()
+        }
+    } catch (e: Exception) { e.printStackTrace() }
+    return Pair(items, spine)
+}
 
     private fun htmlToPlainText(html: String): String {
         return html.replace(Regex("<[^>]*>"), " ")
