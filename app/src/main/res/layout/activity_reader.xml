@@ -29,14 +29,14 @@
         </ScrollView>
 
         <!-- Botón para abrir el panel lateral -->
-        <ImageButton
-            android:id="@+id/btn_open_drawer"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_margin="16dp"
-            android:src="@android:drawable/ic_menu_sort_by_size"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:tint="@android:color/white" />
+	<ImageButton
+          android:id="@+id/btn_open_drawer"
+          android:layout_width="48dp"
+          android:layout_height="48dp"
+          android:layout_margin="16dp"
+          android:src="@android:drawable/ic_menu_sort_by_size"
+          android:background="?attr/selectableItemBackgroundBorderless"
+          android:tint="#000000" />
 
     </FrameLayout>
 

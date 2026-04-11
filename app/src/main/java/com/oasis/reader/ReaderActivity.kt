@@ -484,13 +484,21 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun applyTheme(themeKey: String) {
-        val bgRes = when (themeKey) {
-            "caribe" -> R.color.caribe_background
-            "noche" -> R.color.oscuro_background   // usar mismo color oscuro
-            else -> R.color.amanecer_background
-        }
-        window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
+    val bgRes = when (themeKey) {
+        "caribe" -> R.color.caribe_background
+        "noche" -> R.color.oscuro_background   // usar mismo color oscuro
+        else -> R.color.amanecer_background
     }
+    window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
+
+    val textColorRes = when (themeKey) {
+        "amanecer" -> R.color.amanecer_text
+        "caribe" -> R.color.caribe_text
+        "noche" -> R.color.oscuro_text
+        else -> R.color.amanecer_text
+    }
+    tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
+}
 
     override fun onDestroy() {
         super.onDestroy()
