@@ -133,6 +133,14 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
+    private fun openFileSelector() {
+    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        addCategory(Intent.CATEGORY_OPENABLE)
+        type = "application/epub+zip"
+    }
+    startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
+}
+
     private fun loadBookFromUri(uri: Uri) {
         try {
             val inputStream = contentResolver.openInputStream(uri) ?: return
