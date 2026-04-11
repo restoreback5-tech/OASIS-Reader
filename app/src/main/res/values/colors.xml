@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Botones -->
+    <color name="btn_call">#2dd4bf</color>
+    <color name="btn_message">#818cf8</color>
+    <color name="btn_contacts">#6d28d9</color>
+    <color name="btn_apps">#64748b</color>
+    
+    <!-- Básicos -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    
+    <!-- Orbe -->
+    <color name="orb_glow">#4a90e2</color>
+    <color name="orb_oscuro_primary">#4FACFE</color>
+    <color name="orb_oscuro_secondary">#00F2FE</color>
+    <color name="orb_oscuro_glow">#0052D4</color>
+    
+    <!-- Temas de fondo -->
+    <color name="amanecer_background">#FFF8E7</color>
+    <color name="caribe_background">#E0F7FA</color>
+    <color name="oscuro_background">#2C2C2C</color>
+    
+    <!-- Temas de texto -->
+    <color name="amanecer_text">#5D4037</color>
+    <color name="caribe_text">#006064</color>
+    <color name="oscuro_text">#FFFFFF</color>
+    
+    <!-- Status bar -->
+    <color name="status_bar_amanecer">#FFE0B2</color>
+    <color name="status_bar_caribe">#B2EBF2</color>
+    <color name="status_bar_oscuro">#1E1E1E</color>
+
+   <color name="settings_accent_blue">#0084FF</color>
+</resources>

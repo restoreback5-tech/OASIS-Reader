@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawer_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <!-- Contenido principal -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- ViewPager para imágenes (cuando no hay libro) -->
+        <androidx.viewpager.widget.ViewPager
+            android:id="@+id/viewpager_images"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="visible" />
+
+        <!-- ScrollView para texto del libro (cuando hay libro cargado) -->
+        <ScrollView
+            android:id="@+id/scroll_text"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            android:scrollbars="vertical">
+
+            <TextView
+                android:id="@+id/tv_book_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="24dp"
+                android:textSize="16sp"
+                android:lineSpacingExtra="4dp"
+                android:textColor="@android:color/black" />
+
+        </ScrollView>
+
+        <!-- Botón para abrir el panel lateral (opcional) -->
+        <ImageButton
+            android:id="@+id/btn_open_drawer"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="16dp"
+            android:src="@android:drawable/ic_menu_sort_by_size"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@android:color/white" />
+
+	<ImageButton
+  	    android:id="@+id/btn_chapters"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+   	    android:src="@android:drawable/ic_menu_sort_by_size"
+   	    android:background="?attr/selectableItemBackgroundBorderless"
+	    android:tint="@color/settings_accent_blue" />
+
+    </FrameLayout>
+
+    <!-- Panel lateral (controles) -->
+    <LinearLayout
+        android:layout_width="300dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@drawable/settings_bg_gradient">
+
+        <!-- Selector de temas -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="8dp">
+
+            <LinearLayout
+                android:id="@+id/theme_sol"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_sol"
+                    android:contentDescription="Sol" />
+
+                <ImageView
+                    android:id="@+id/indicator_sol"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginTop="4dp"
+                    android:src="@drawable/ic_check_circle_blue"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/theme_luna"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_luna"
+                    android:contentDescription="Luna" />
+
+                <ImageView
+                    android:id="@+id/indicator_luna"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginTop="4dp"
+                    android:src="@drawable/ic_check_circle_blue"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/theme_nubes"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_nubes"
+                    android:contentDescription="Nubes" />
+
+                <ImageView
+                    android:id="@+id/indicator_nubes"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginTop="4dp"
+                    android:src="@drawable/ic_check_circle_blue"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
+
+        <!-- Slider de velocidad -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Velocidad de voz"
+            android:textSize="16sp"
+            android:textColor="#1C1C1E" />
+
+        <SeekBar
+            android:id="@+id/seekbar_tts_speed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="50"
+            android:progressTint="@color/settings_accent_blue"
+            android:thumbTint="@color/settings_accent_blue" />
+
+        <TextView
+            android:id="@+id/text_tts_speed_value"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Normal"
+            android:textSize="12sp"
+            android:textColor="#1C1C1E"
+            android:gravity="center" />
+
+        <!-- Slider de tono -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Tono de voz"
+            android:textSize="16sp"
+            android:textColor="#1C1C1E" />
+
+        <SeekBar
+            android:id="@+id/seekbar_tts_pitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="50"
+            android:progressTint="@color/settings_accent_blue"
+            android:thumbTint="@color/settings_accent_blue" />
+
+        <TextView
+            android:id="@+id/text_tts_pitch_value"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Normal"
+            android:textSize="12sp"
+            android:textColor="#1C1C1E"
+            android:gravity="center" />
+
+        <!-- Slider de brillo placebo -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Brillo"
+            android:textSize="16sp"
+            android:textColor="#1C1C1E" />
+
+        <SeekBar
+            android:id="@+id/seekbar_brightness"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="100" />
+
+        <!-- Slider de tamaño de texto -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Tamaño de texto"
+            android:textSize="16sp"
+            android:textColor="#1C1C1E" />
+
+        <SeekBar
+            android:id="@+id/seekbar_text_size"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="30"
+            android:progress="16" />
+
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
+
+        <!-- Botones Play y Libro -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btn_play"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@android:drawable/ic_media_play"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:tint="@color/settings_accent_blue" />
+
+            <ImageButton
+                android:id="@+id/btn_book"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@android:drawable/ic_menu_edit"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:tint="@color/settings_accent_blue" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.drawerlayout.widget.DrawerLayout>
