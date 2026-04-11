@@ -490,7 +490,7 @@ class ReaderActivity : AppCompatActivity() {
         val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorLuna, "oscuro" to indicatorNubes)
         themeSol.setOnClickListener { setTheme("amanecer", themes, indicators) }
         themeLuna.setOnClickListener { setTheme("caribe", themes, indicators) }
-        themeNubes.setOnClickListener { setTheme("os
+        themeNubes.setOnClickL
 
     private fun setupThemes() {
         val themes = mapOf("amanecer" to themeSol, "caribe" to themeLuna, "oscuro" to themeNubes)
