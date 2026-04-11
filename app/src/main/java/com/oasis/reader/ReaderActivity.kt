@@ -33,7 +33,6 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var tts: TTSModule
     private lateinit var prefs: SharedPreferences
     private val REQUEST_CODE_OPEN_DOCUMENT = 1000
-    private val REQUEST_STORAGE_PERMISSION = 1001
 
     // Sliders
     private lateinit var seekSpeed: SeekBar
@@ -94,10 +93,10 @@ class ReaderActivity : AppCompatActivity() {
         setupSliders()
         setupThemes()
 
-        findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
-            sound.play(R.raw.touch)
-            checkStoragePermissionAndOpenFile()
-        }
+	findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
+    sound.play(R.raw.touch)
+    openFileSelector()
+}
 
         findViewById<ImageButton>(R.id.btn_play).setOnClickListener {
             sound.play(R.raw.touch)
@@ -119,38 +118,6 @@ class ReaderActivity : AppCompatActivity() {
         if (!lastBookUri.isNullOrEmpty()) {
             currentUri = Uri.parse(lastBookUri)
             loadBookFromUri(currentUri!!)
-        }
-    }
-
-    private fun checkStoragePermissionAndOpenFile() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                    REQUEST_STORAGE_PERMISSION)
-                return
-            }
-        }
-        openFileSelector()
-    }
-
-    private fun openFileSelector() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/epub+zip"
-        }
-        startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_STORAGE_PERMISSION) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                openFileSelector()
-            } else {
-                Toast.makeText(this, "Permiso de almacenamiento necesario para leer libros", Toast.LENGTH_LONG).show()
-            }
         }
     }
 

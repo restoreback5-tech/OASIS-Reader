@@ -202,11 +202,13 @@
             android:textColor="#1C1C1E" />
 
         <SeekBar
-            android:id="@+id/seekbar_brightness"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100"
-            android:progress="100" />
+	    android:id="@+id/seekbar_brightness"
+	    android:layout_width="match_parent"
+	    android:layout_height="wrap_content"
+	    android:max="100"
+	    android:progress="100"
+	    android:progressTint="@color/settings_accent_blue"
+	    android:thumbTint="@color/settings_accent_blue" />
 
         <!-- Tamaño de texto -->
         <TextView
@@ -217,12 +219,15 @@
             android:textSize="16sp"
             android:textColor="#1C1C1E" />
 
+       
         <SeekBar
-            android:id="@+id/seekbar_text_size"
+	    android:id="@+id/seekbar_brightness"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="30"
-            android:progress="16" />
+	    android:layout_height="wrap_content"
+	    android:max="100"
+	    android:progress="100"
+	    android:progressTint="@color/settings_accent_blue"
+	    android:thumbTint="@color/settings_accent_blue" />
 
         <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
 
