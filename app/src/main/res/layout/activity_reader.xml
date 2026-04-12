@@ -271,6 +271,13 @@
 
         </LinearLayout>
 
+        <!-- Widget Tortuga -->
+	   <com.oasis.turtle.TurtleView
+            android:id="@+id/turtle_widget"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="16dp" />
     </LinearLayout>
 
 </androidx.drawerlayout.widget.DrawerLayout>

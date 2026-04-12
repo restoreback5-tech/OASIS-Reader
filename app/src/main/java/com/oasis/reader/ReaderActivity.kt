@@ -15,6 +15,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import com.oasis.turtle.TurtleView
+import android.view.GestureDetector
+import android.view.MotionEvent
+import kotlin.math.abs
 
 class ReaderActivity : AppCompatActivity() {
 
@@ -42,6 +46,10 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var indicatorSol: ImageView
     private lateinit var indicatorLuna: ImageView
     private lateinit var indicatorNubes: ImageView
+    private lateinit var turtleWidget: TurtleView
+    private lateinit var gestureDetector: GestureDetector
+    private var touchStartX = 0f
+    private var touchEndX = 0f
 
     // Datos del libro
     private var chapterTitles = mutableListOf<String>()
@@ -81,6 +89,17 @@ class ReaderActivity : AppCompatActivity() {
         indicatorSol = findViewById(R.id.indicator_sol)
         indicatorLuna = findViewById(R.id.indicator_luna)
         indicatorNubes = findViewById(R.id.indicator_nubes)
+        turtleWidget = findViewById(R.id.turtle_widget)
+	gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 != null) {
+                    touchStartX = e1.x
+                    touchEndX = e2.x
+                    handleSwipe()
+                }
+                return true
+            }
+        })
 
         btnOpenDrawer.setOnClickListener {
             sound.play(R.raw.touch)
@@ -288,6 +307,11 @@ class ReaderActivity : AppCompatActivity() {
                 runOnUiThread {
                     currentParagraphIndex++
                     saveProgress()
+
+		   // Notificar a la tortuga del avance
+                val totalParagraphs = chapterContents[currentChapterIndex].size
+                turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
+
                     readCurrentParagraph()
                     showCurrentContent()
                 }
@@ -395,6 +419,9 @@ class ReaderActivity : AppCompatActivity() {
             else -> R.color.amanecer_text
         }
         tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
+	// Actualizar estado de la tortuga según tema
+        val isNight = themeKey == "noche"
+        turtleWidget.setNightMode(isNight)
     }
 
     override fun onDestroy() {
@@ -402,5 +429,69 @@ class ReaderActivity : AppCompatActivity() {
         sound.release()
         tts.shutdown()
         saveProgress()
+    }
+
+   //------Logica de swipe------
+
+   override fun onTouchEvent(event: MotionEvent?): Boolean {
+        if (event != null) {
+            gestureDetector.onTouchEvent(event)
+        }
+        return super.onTouchEvent(event)
+    }
+
+    private fun handleSwipe() {
+        val swipeThreshold = 100 // píxeles mínimos para considerar swipe
+        val diff = touchStartX - touchEndX
+        
+        if (abs(diff) > swipeThreshold) {
+            if (diff > 0) {
+                // Swipe izquierda -> Avanzar
+                nextParagraph()
+            } else {
+                // Swipe derecha -> Retroceder
+                previousParagraph()
+            }
+        }
+    }
+
+    private fun nextParagraph() {
+        sound.play(R.raw.page_flip)
+        if (isPlaying) pauseReading()
+        
+        val paragraphs = chapterContents.getOrNull(currentChapterIndex) ?: return
+        val totalParagraphs = paragraphs.size
+        
+        if (currentParagraphIndex < totalParagraphs - 1) {
+            currentParagraphIndex++
+            showCurrentContent()
+            saveProgress()
+            // Tortuga come al avanzar manualmente
+            turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
+        } else if (currentChapterIndex < chapterContents.size - 1) {
+            // Siguiente capítulo
+            currentChapterIndex++
+            currentParagraphIndex = 0
+            showCurrentContent()
+            saveProgress()
+            turtleWidget.onPageAdvanced(currentParagraphIndex, chapterContents[currentChapterIndex].size)
+        }
+    }
+
+    private fun previousParagraph() {
+        sound.play(R.raw.page_flip)
+        if (isPlaying) pauseReading()
+        
+        if (currentParagraphIndex > 0) {
+            currentParagraphIndex--
+            showCurrentContent()
+            saveProgress()
+        } else if (currentChapterIndex > 0) {
+            // Capítulo anterior
+            currentChapterIndex--
+            currentParagraphIndex = chapterContents[currentChapterIndex].size - 1
+            showCurrentContent()
+            saveProgress()
+        }
     }
 }
