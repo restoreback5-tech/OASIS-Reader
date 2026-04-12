@@ -1,4 +1,5 @@
 package com.oasis.turtle
+import com.oasis.reader.R
 
 import android.content.Context
 import android.content.SharedPreferences
