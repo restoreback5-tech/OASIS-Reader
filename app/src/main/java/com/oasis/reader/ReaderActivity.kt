@@ -90,7 +90,12 @@ class ReaderActivity : AppCompatActivity() {
         indicatorLuna = findViewById(R.id.indicator_luna)
         indicatorNubes = findViewById(R.id.indicator_nubes)
         turtleWidget = findViewById(R.id.turtle_widget)
-	gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+	    ...
+})gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+        scrollText.setOnTouchListener { _, event ->
+    gestureDetector.onTouchEvent(event)
+    true
+}
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
                 if (e1 != null) {
                     touchStartX = e1.x
@@ -429,15 +434,6 @@ class ReaderActivity : AppCompatActivity() {
         sound.release()
         tts.shutdown()
         saveProgress()
-    }
-
-   //------Logica de swipe------
-
-   override fun onTouchEvent(event: MotionEvent?): Boolean {
-        if (event != null) {
-            gestureDetector.onTouchEvent(event)
-        }
-        return super.onTouchEvent(event)
     }
 
     private fun handleSwipe() {
