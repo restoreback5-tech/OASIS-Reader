@@ -9,6 +9,8 @@ import android.os.Bundle
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.StyleSpan
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -16,8 +18,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import com.oasis.turtle.TurtleView
-import android.view.GestureDetector
-import android.view.MotionEvent
 import kotlin.math.abs
 
 class ReaderActivity : AppCompatActivity() {
@@ -47,6 +47,8 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var indicatorLuna: ImageView
     private lateinit var indicatorNubes: ImageView
     private lateinit var turtleWidget: TurtleView
+
+    // Swipe
     private lateinit var gestureDetector: GestureDetector
     private var touchStartX = 0f
     private var touchEndX = 0f
@@ -59,7 +61,6 @@ class ReaderActivity : AppCompatActivity() {
     private var isPlaying = false
     private var currentUri: Uri? = null
 
-    // Parser EPUB
     private lateinit var epubParser: EpubParser
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,29 +91,14 @@ class ReaderActivity : AppCompatActivity() {
         indicatorLuna = findViewById(R.id.indicator_luna)
         indicatorNubes = findViewById(R.id.indicator_nubes)
         turtleWidget = findViewById(R.id.turtle_widget)
-	    ...
-})gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-        scrollText.setOnTouchListener { _, event ->
-    gestureDetector.onTouchEvent(event)
-    true
-}
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                if (e1 != null) {
-                    touchStartX = e1.x
-                    touchEndX = e2.x
-                    handleSwipe()
-                }
-                return true
-            }
-        })
+
+        setupSliders()
+        setupThemes()
 
         btnOpenDrawer.setOnClickListener {
             sound.play(R.raw.touch)
             drawerLayout.openDrawer(GravityCompat.START)
         }
-
-        setupSliders()
-        setupThemes()
 
         findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
             sound.play(R.raw.touch)
@@ -140,22 +126,80 @@ class ReaderActivity : AppCompatActivity() {
             currentUri = Uri.parse(lastBookUri)
             loadBookFromUri(currentUri!!)
         }
+
+        // Configurar Swipe
+        gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 != null) {
+                    touchStartX = e1.x
+                    touchEndX = e2.x
+                    handleSwipe()
+                }
+                return true
+            }
+        })
+
+        scrollText.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            true
+        }
+    }
+
+    private fun handleSwipe() {
+        val swipeThreshold = 100
+        val diff = touchStartX - touchEndX
+        if (abs(diff) > swipeThreshold) {
+            if (diff > 0) {
+                nextParagraph()
+            } else {
+                previousParagraph()
+            }
+        }
+    }
+
+    private fun nextParagraph() {
+        sound.play(R.raw.page_flip)
+        if (isPlaying) pauseReading()
+        val paragraphs = chapterContents.getOrNull(currentChapterIndex) ?: return
+        val totalParagraphs = paragraphs.size
+        if (currentParagraphIndex < totalParagraphs - 1) {
+            currentParagraphIndex++
+            showCurrentContent()
+            saveProgress()
+            turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
+        } else if (currentChapterIndex < chapterContents.size - 1) {
+            currentChapterIndex++
+            currentParagraphIndex = 0
+            showCurrentContent()
+            saveProgress()
+            turtleWidget.onPageAdvanced(currentParagraphIndex, chapterContents[currentChapterIndex].size)
+        }
+    }
+
+    private fun previousParagraph() {
+        sound.play(R.raw.page_flip)
+        if (isPlaying) pauseReading()
+        if (currentParagraphIndex > 0) {
+            currentParagraphIndex--
+            showCurrentContent()
+            saveProgress()
+        } else if (currentChapterIndex > 0) {
+            currentChapterIndex--
+            currentParagraphIndex = chapterContents[currentChapterIndex].size - 1
+            showCurrentContent()
+            saveProgress()
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_CODE_OPEN_DOCUMENT && resultCode == RESULT_OK) {
             data?.data?.let { uri ->
-                // Persistir permiso de lectura para futuros accesos
                 try {
-                    contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 } catch (e: SecurityException) {
                     e.printStackTrace()
                 }
-
                 sound.play(R.raw.confirmar)
                 currentUri = uri
                 prefs.edit().putString("last_book_uri", uri.toString()).apply()
@@ -179,14 +223,11 @@ class ReaderActivity : AppCompatActivity() {
                 Toast.makeText(this, "No se encontraron capítulos en el EPUB", Toast.LENGTH_LONG).show()
                 return
             }
-
             chapterTitles = parsed.chapterTitles
             chapterContents = parsed.chapterContents
-
             currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
             currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
             if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
-
             showCurrentContent()
             Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -200,10 +241,8 @@ class ReaderActivity : AppCompatActivity() {
             val title = chapterTitles[currentChapterIndex]
             val paragraphs = chapterContents[currentChapterIndex]
             val paragraphText = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
-
             val spannable = SpannableString("$title\n\n$paragraphText")
             spannable.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-
             tvBookContent.text = spannable
             scrollText.scrollTo(0, 0)
         }
@@ -312,11 +351,8 @@ class ReaderActivity : AppCompatActivity() {
                 runOnUiThread {
                     currentParagraphIndex++
                     saveProgress()
-
-		   // Notificar a la tortuga del avance
-                val totalParagraphs = chapterContents[currentChapterIndex].size
-                turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
-
+                    val totalParagraphs = chapterContents[currentChapterIndex].size
+                    turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
                     readCurrentParagraph()
                     showCurrentContent()
                 }
@@ -344,7 +380,6 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
-
         seekPitch.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
@@ -358,7 +393,6 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
-
         seekBrightness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) sound.play(R.raw.deslizar)
@@ -368,7 +402,6 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
-
         seekTextSize.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) sound.play(R.raw.deslizar)
@@ -377,7 +410,6 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
-
         val savedSpeed = prefs.getFloat("voice_speed", 1.0f)
         val savedPitch = prefs.getFloat("voice_pitch", 1.0f)
         seekSpeed.progress = ((savedSpeed - 0.5f) / 1.5f * 100).toInt().coerceIn(0, 100)
@@ -416,7 +448,6 @@ class ReaderActivity : AppCompatActivity() {
             else -> R.color.amanecer_background
         }
         window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
-
         val textColorRes = when (themeKey) {
             "amanecer" -> R.color.amanecer_text
             "caribe" -> R.color.caribe_text
@@ -424,7 +455,6 @@ class ReaderActivity : AppCompatActivity() {
             else -> R.color.amanecer_text
         }
         tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
-	// Actualizar estado de la tortuga según tema
         val isNight = themeKey == "noche"
         turtleWidget.setNightMode(isNight)
     }
@@ -434,60 +464,5 @@ class ReaderActivity : AppCompatActivity() {
         sound.release()
         tts.shutdown()
         saveProgress()
-    }
-
-    private fun handleSwipe() {
-        val swipeThreshold = 100 // píxeles mínimos para considerar swipe
-        val diff = touchStartX - touchEndX
-        
-        if (abs(diff) > swipeThreshold) {
-            if (diff > 0) {
-                // Swipe izquierda -> Avanzar
-                nextParagraph()
-            } else {
-                // Swipe derecha -> Retroceder
-                previousParagraph()
-            }
-        }
-    }
-
-    private fun nextParagraph() {
-        sound.play(R.raw.page_flip)
-        if (isPlaying) pauseReading()
-        
-        val paragraphs = chapterContents.getOrNull(currentChapterIndex) ?: return
-        val totalParagraphs = paragraphs.size
-        
-        if (currentParagraphIndex < totalParagraphs - 1) {
-            currentParagraphIndex++
-            showCurrentContent()
-            saveProgress()
-            // Tortuga come al avanzar manualmente
-            turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
-        } else if (currentChapterIndex < chapterContents.size - 1) {
-            // Siguiente capítulo
-            currentChapterIndex++
-            currentParagraphIndex = 0
-            showCurrentContent()
-            saveProgress()
-            turtleWidget.onPageAdvanced(currentParagraphIndex, chapterContents[currentChapterIndex].size)
-        }
-    }
-
-    private fun previousParagraph() {
-        sound.play(R.raw.page_flip)
-        if (isPlaying) pauseReading()
-        
-        if (currentParagraphIndex > 0) {
-            currentParagraphIndex--
-            showCurrentContent()
-            saveProgress()
-        } else if (currentChapterIndex > 0) {
-            // Capítulo anterior
-            currentChapterIndex--
-            currentParagraphIndex = chapterContents[currentChapterIndex].size - 1
-            showCurrentContent()
-            saveProgress()
-        }
     }
 }
