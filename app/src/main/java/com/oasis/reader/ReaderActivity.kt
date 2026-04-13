@@ -1,4 +1,3 @@
-cat > ~/OASIS-Reader/app/src/main/java/com/oasis/reader/ReaderActivity.kt << 'EOF'
 package com.oasis.reader
 
 import android.app.AlertDialog
