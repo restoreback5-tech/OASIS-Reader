@@ -317,12 +317,12 @@ class ReaderActivity : AppCompatActivity() {
     ) {
         for (node in nodes) {
             val groupMap = HashMap<String, String>()
-            groupMap["title"] = node.title
+           groupMap["title"] = cleanHtmlTitle(node.title)
             groupList.add(groupMap)
             val childrenArray = ArrayList<Map<String, String>>()
             for (child in node.children) {
                 val childMap = HashMap<String, String>()
-                childMap["title"] = child.title
+                childMap["title"] = cleanHtmlTitle(child.title)
                 childrenArray.add(childMap)
             }
             childList.add(childrenArray)
@@ -350,7 +350,7 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun jumpToChapter(node: ChapterNode) {
-        val index = chapterTitles.indexOf(node.title)
+           val index = chapterTitles.indexOf(cleanHtmlTitle(node.title))
         if (index != -1 && index != currentChapterIndex) {
             sound.play(R.raw.page_flip)
             currentChapterIndex = index
@@ -574,6 +574,12 @@ class ReaderActivity : AppCompatActivity() {
         indicators.values.forEach { it.visibility = View.GONE }
         indicators[themeKey]?.visibility = View.VISIBLE
     }
+   
+    private fun cleanHtmlTitle(html: String): String {
+    return html.replace(Regex("<[^>]*>"), "").trim().let {
+        if (it.isBlank() || it.length < 2) "Sección" else it
+    }
+}
 
     private fun applyTheme(themeKey: String) {
         val bgRes = when (themeKey) {
