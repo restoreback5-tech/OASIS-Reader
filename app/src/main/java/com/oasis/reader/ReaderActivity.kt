@@ -1,137 +1,248 @@
+cat > ~/OASIS-Reader/app/src/main/java/com/oasis/reader/ReaderActivity.kt << 'EOF'
 package com.oasis.reader
 
 import android.app.AlertDialog
-import android.content.Context
-import android.media.MediaPlayer
+import android.content.Intent
+import android.content.SharedPreferences
+import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
+import android.text.Spannable
 import android.text.SpannableString
-import android.text.StyleSpan
-import android.text.TextUtils
-import android.text.method.ScrollingMovementMethod
 import android.text.style.StyleSpan
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
-import android.widget.ExpandableListView
-import android.widget.SimpleExpandableListAdapter
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.GestureDetectorCompat
-import java.util.*
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
+import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
+import com.oasis.turtle.TurtleView
+import kotlin.math.abs
 
-class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
+class ReaderActivity : AppCompatActivity() {
 
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var scrollText: ScrollView
     private lateinit var tvBookContent: TextView
-    private lateinit var scrollText: View
-    private lateinit var turtleView: TurtleView
-    private lateinit var tts: TextToSpeech
+    private lateinit var btnOpenDrawer: ImageButton
     private lateinit var sound: SoundModule
-    private lateinit var epubParser: EpubParser
-    private var bookUri: String? = null
+    private lateinit var tts: TTSModule
+    private lateinit var prefs: SharedPreferences
+    private val REQUEST_CODE_OPEN_DOCUMENT = 1000
 
+    // Sliders
+    private lateinit var seekSpeed: SeekBar
+    private lateinit var seekPitch: SeekBar
+    private lateinit var seekBrightness: SeekBar
+    private lateinit var seekTextSize: SeekBar
+    private lateinit var speedValueText: TextView
+    private lateinit var pitchValueText: TextView
+
+    // Temas
+    private lateinit var themeSol: View
+    private lateinit var themeLuna: View
+    private lateinit var themeNubes: View
+    private lateinit var indicatorSol: ImageView
+    private lateinit var indicatorLuna: ImageView
+    private lateinit var indicatorNubes: ImageView
+    private lateinit var turtleWidget: TurtleView
+
+    // Swipe
+    private lateinit var gestureDetector: GestureDetector
+    private var touchStartX = 0f
+    private var touchEndX = 0f
+
+    // Datos del libro
     private var chapterTitles = mutableListOf<String>()
     private var chapterContents = mutableListOf<List<String>>()
     private var currentChapterIndex = 0
     private var currentParagraphIndex = 0
     private var isPlaying = false
+    private var currentUri: Uri? = null
 
-    // Variables para índice jerárquico
+    // Índice jerárquico
     private var hierarchicalChapters: List<ChapterNode> = emptyList()
-    private var chapterNodeMap = mutableMapOf<Int, ChapterNode>() // posición plana -> nodo
+    private var chapterNodeMap = mutableMapOf<Int, ChapterNode>()
 
-    private lateinit var gestureDetector: GestureDetectorCompat
+    private lateinit var epubParser: EpubParser
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_reader)
 
-        tvBookContent = findViewById(R.id.tvBookContent)
-        scrollText = findViewById(R.id.scrollText)
-        turtleView = findViewById(R.id.turtleView)
-        tvBookContent.movementMethod = ScrollingMovementMethod()
-
+        prefs = getSharedPreferences("oasis_settings", MODE_PRIVATE)
         sound = SoundModule(this)
-        tts = TextToSpeech(this, this)
+        tts = TTSModule(this)
         epubParser = EpubParser(contentResolver)
 
-        bookUri = intent.getStringExtra("book_uri")
-        if (bookUri != null) {
-            loadBook(Uri.parse(bookUri))
-        } else {
-            Toast.makeText(this, "No se pudo cargar el libro", Toast.LENGTH_SHORT).show()
-            finish()
+        drawerLayout = findViewById(R.id.drawer_layout)
+        scrollText = findViewById(R.id.scroll_text)
+        tvBookContent = findViewById(R.id.tv_book_content)
+        btnOpenDrawer = findViewById(R.id.btn_open_drawer)
+
+        seekSpeed = findViewById(R.id.seekbar_tts_speed)
+        seekPitch = findViewById(R.id.seekbar_tts_pitch)
+        seekBrightness = findViewById(R.id.seekbar_brightness)
+        seekTextSize = findViewById(R.id.seekbar_text_size)
+        speedValueText = findViewById(R.id.text_tts_speed_value)
+        pitchValueText = findViewById(R.id.text_tts_pitch_value)
+
+        themeSol = findViewById(R.id.theme_sol)
+        themeLuna = findViewById(R.id.theme_luna)
+        themeNubes = findViewById(R.id.theme_nubes)
+        indicatorSol = findViewById(R.id.indicator_sol)
+        indicatorLuna = findViewById(R.id.indicator_luna)
+        indicatorNubes = findViewById(R.id.indicator_nubes)
+        turtleWidget = findViewById(R.id.turtle_widget)
+
+        setupSliders()
+        setupThemes()
+
+        btnOpenDrawer.setOnClickListener {
+            sound.play(R.raw.touch)
+            drawerLayout.openDrawer(GravityCompat.START)
         }
 
-        gestureDetector = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(
-                e1: MotionEvent?,
-                e2: MotionEvent?,
-                velocityX: Float,
-                velocityY: Float
-            ): Boolean {
-                if (e1 == null || e2 == null) return false
-                val diffX = e1.x - e2.x
-                if (Math.abs(diffX) > 100 && Math.abs(velocityX) > 100) {
-                    if (diffX > 0) {
-                        // swipe izquierda -> siguiente párrafo
-                        nextParagraph()
-                    } else {
-                        // swipe derecha -> anterior párrafo
-                        previousParagraph()
-                    }
-                    return true
+        findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
+            sound.play(R.raw.touch)
+            openFileSelector()
+        }
+
+        findViewById<ImageButton>(R.id.btn_play).setOnClickListener {
+            sound.play(R.raw.touch)
+            if (chapterContents.isEmpty()) {
+                Toast.makeText(this, "Primero selecciona un libro EPUB", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (isPlaying) pauseReading()
+            else startReading()
+        }
+
+        findViewById<ImageButton>(R.id.btn_chapters).setOnClickListener {
+            sound.play(R.raw.touch)
+            showChapterListDialog()
+        }
+
+        // Restaurar último libro si existe
+        val lastBookUri = prefs.getString("last_book_uri", null)
+        if (!lastBookUri.isNullOrEmpty()) {
+            currentUri = Uri.parse(lastBookUri)
+            loadBookFromUri(currentUri!!)
+        }
+
+        // Configurar Swipe
+        gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 != null) {
+                    touchStartX = e1.x
+                    touchEndX = e2.x
+                    handleSwipe()
                 }
-                return false
+                return true
             }
         })
 
-        findViewById<View>(R.id.btnIndex).setOnClickListener {
-            showChapterListDialog()
+        scrollText.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            true
         }
-        findViewById<View>(R.id.btnPlayPause).setOnClickListener {
-            if (isPlaying) pauseReading() else startReading()
+    }
+
+    private fun handleSwipe() {
+        val swipeThreshold = 100
+        val diff = touchStartX - touchEndX
+        if (abs(diff) > swipeThreshold) {
+            if (diff > 0) {
+                nextParagraph()
+            } else {
+                previousParagraph()
+            }
         }
-        findViewById<View>(R.id.btnStop).setOnClickListener {
-            pauseReading()
+    }
+
+    private fun nextParagraph() {
+        sound.play(R.raw.page_flip)
+        if (isPlaying) pauseReading()
+        val paragraphs = chapterContents.getOrNull(currentChapterIndex) ?: return
+        val totalParagraphs = paragraphs.size
+        if (currentParagraphIndex < totalParagraphs - 1) {
+            currentParagraphIndex++
+            showCurrentContent()
+            saveProgress()
+            turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
+        } else if (currentChapterIndex < chapterContents.size - 1) {
+            currentChapterIndex++
             currentParagraphIndex = 0
             showCurrentContent()
+            saveProgress()
+            turtleWidget.onPageAdvanced(currentParagraphIndex, chapterContents[currentChapterIndex].size)
         }
     }
 
-    private fun loadBook(uri: Uri) {
+    private fun previousParagraph() {
+        sound.play(R.raw.page_flip)
+        if (isPlaying) pauseReading()
+        if (currentParagraphIndex > 0) {
+            currentParagraphIndex--
+            showCurrentContent()
+            saveProgress()
+        } else if (currentChapterIndex > 0) {
+            currentChapterIndex--
+            currentParagraphIndex = chapterContents[currentChapterIndex].size - 1
+            showCurrentContent()
+            saveProgress()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_CODE_OPEN_DOCUMENT && resultCode == RESULT_OK) {
+            data?.data?.let { uri ->
+                try {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (e: SecurityException) {
+                    e.printStackTrace()
+                }
+                sound.play(R.raw.confirmar)
+                currentUri = uri
+                prefs.edit().putString("last_book_uri", uri.toString()).apply()
+                loadBookFromUri(uri)
+            }
+        }
+    }
+
+    private fun openFileSelector() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/epub+zip"
+        }
+        startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
+    }
+
+    private fun loadBookFromUri(uri: Uri) {
         try {
             val parsed = epubParser.parse(uri)
+            if (parsed.chapterContents.isEmpty()) {
+                Toast.makeText(this, "No se encontraron capítulos en el EPUB", Toast.LENGTH_LONG).show()
+                return
+            }
             chapterTitles = parsed.chapterTitles
             chapterContents = parsed.chapterContents
-            // Cargar índice jerárquico si existe
+            // Cargar índice jerárquico
             hierarchicalChapters = epubParser.getHierarchicalChapters(uri)
             if (hierarchicalChapters.isNotEmpty()) {
-                // Construir mapeo de posición plana a nodo (para navegación)
                 flattenNodes(hierarchicalChapters)
             }
-            if (chapterTitles.isNotEmpty()) {
-                showCurrentContent()
-                loadProgress()
-            } else {
-                Toast.makeText(this, "No se encontraron capítulos", Toast.LENGTH_SHORT).show()
-            }
+            currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
+            currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
+            if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
+            showCurrentContent()
+            Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            Toast.makeText(this, "Error al cargar el libro: ${e.message}", Toast.LENGTH_SHORT).show()
             e.printStackTrace()
-        }
-    }
-
-    private fun flattenNodes(nodes: List<ChapterNode>, parentPosition: Int = -1) {
-        for ((index, node) in nodes.withIndex()) {
-            val flatPos = chapterNodeMap.size
-            chapterNodeMap[flatPos] = node
-            if (node.children.isNotEmpty()) {
-                flattenNodes(node.children, flatPos)
-            }
+            Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -141,7 +252,7 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val paragraphs = chapterContents[currentChapterIndex]
             val paragraphText = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
             val spannable = SpannableString("$title\n\n$paragraphText")
-            spannable.setSpan(StyleSpan(android.graphics.Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            spannable.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             tvBookContent.text = spannable
             scrollText.scrollTo(0, 0)
         }
@@ -152,8 +263,6 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             Toast.makeText(this, "No hay capítulos cargados", Toast.LENGTH_SHORT).show()
             return
         }
-
-        // Si hay índice jerárquico, mostrar ExpandableListView
         if (hierarchicalChapters.isNotEmpty()) {
             showHierarchicalChapterDialog()
         } else {
@@ -165,11 +274,9 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Índice")
         val expandableListView = ExpandableListView(this)
-        // Preparar datos para SimpleExpandableListAdapter
         val groupList = ArrayList<Map<String, String>>()
         val childList = ArrayList<ArrayList<Map<String, String>>>()
         buildExpandableData(hierarchicalChapters, groupList, childList)
-
         val adapter = SimpleExpandableListAdapter(
             this,
             groupList,
@@ -184,7 +291,6 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         expandableListView.setAdapter(adapter)
         builder.setView(expandableListView)
         val dialog = builder.create()
-
         expandableListView.setOnChildClickListener { _, _, groupPosition, childPosition, _ ->
             val node = getNodeAtPosition(groupPosition, childPosition, hierarchicalChapters)
             node?.let {
@@ -200,7 +306,7 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 dialog.dismiss()
                 return@setOnGroupClickListener true
             }
-            false // permite expandir/colapsar
+            false
         }
         dialog.show()
     }
@@ -208,8 +314,7 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun buildExpandableData(
         nodes: List<ChapterNode>,
         groupList: ArrayList<Map<String, String>>,
-        childList: ArrayList<ArrayList<Map<String, String>>>,
-        parentNodes: List<ChapterNode>? = null
+        childList: ArrayList<ArrayList<Map<String, String>>>
     ) {
         for (node in nodes) {
             val groupMap = HashMap<String, String>()
@@ -222,9 +327,6 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 childrenArray.add(childMap)
             }
             childList.add(childrenArray)
-            // Si el nodo tiene hijos, se agregan como grupos adicionales? No, ya están como hijos. 
-            // Pero para sub-subcapítulos, esto no los maneja (solo dos niveles). Para más profundidad, habría que usar un adaptador recursivo.
-            // Por simplicidad, mostramos solo dos niveles. Se puede mejorar después.
         }
     }
 
@@ -249,49 +351,40 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun jumpToChapter(node: ChapterNode) {
-        // Buscar el índice plano correspondiente al src del nodo
-        val src = node.src
-        for (i in 0 until chapterContents.size) {
-            // Comparación simple: el href del capítulo actual (pero no tenemos guardado el src en parse())
-            // Alternativa: usar el título para buscar. Esto es un workaround.
-            // Idealmente, deberíamos guardar el src en parse() pero eso cambiaría mucho.
-            // Por ahora, asumimos que el orden es el mismo: el nodo plano coincide con el orden jerárquico en profundidad.
-            // Una solución robusta: al cargar el índice jerárquico, también llenamos una lista plana de capítulos con su src.
-            // Pero para no complicar, buscamos por título (puede fallar si títulos duplicados).
-            if (chapterTitles[i] == node.title) {
-                if (currentChapterIndex != i) {
-                    sound.play(R.raw.page_flip)
-                    currentChapterIndex = i
-                    currentParagraphIndex = 0
-                    if (isPlaying) pauseReading()
-                    showCurrentContent()
-                    saveProgress()
-                }
-                return
-            }
-        }
-        // Si no se encuentra, intentar con índice posicional aproximado
-        val flatIndex = getFlatIndexForNode(node)
-        if (flatIndex >= 0 && flatIndex < chapterTitles.size) {
-            if (currentChapterIndex != flatIndex) {
+        val index = chapterTitles.indexOf(node.title)
+        if (index != -1 && index != currentChapterIndex) {
+            sound.play(R.raw.page_flip)
+            currentChapterIndex = index
+            currentParagraphIndex = 0
+            tts.stop()
+            showCurrentContent()
+            saveProgress()
+        } else {
+            val flatIndex = getFlatIndexForNode(node)
+            if (flatIndex in chapterTitles.indices && flatIndex != currentChapterIndex) {
                 sound.play(R.raw.page_flip)
                 currentChapterIndex = flatIndex
                 currentParagraphIndex = 0
-                if (isPlaying) pauseReading()
+                tts.stop()
                 showCurrentContent()
                 saveProgress()
+            } else {
+                Toast.makeText(this, "No se pudo encontrar el capítulo", Toast.LENGTH_SHORT).show()
             }
-        } else {
-            Toast.makeText(this, "No se pudo encontrar el capítulo", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun flattenNodes(nodes: List<ChapterNode>) {
+        for (node in nodes) {
+            chapterNodeMap[chapterNodeMap.size] = node
+            if (node.children.isNotEmpty()) {
+                flattenNodes(node.children)
+            }
         }
     }
 
     private fun getFlatIndexForNode(node: ChapterNode): Int {
-        // Mapeo simple por orden de aparición en flattenNodes
-        for ((idx, n) in chapterNodeMap) {
-            if (n === node) return idx
-        }
-        return -1
+        return chapterNodeMap.entries.find { it.value === node }?.key ?: -1
     }
 
     private fun showFlatChapterDialog() {
@@ -302,67 +395,12 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     sound.play(R.raw.page_flip)
                     currentChapterIndex = which
                     currentParagraphIndex = 0
-                    if (isPlaying) pauseReading()
+                    tts.stop()
                     showCurrentContent()
                     saveProgress()
                 }
             }
             .show()
-    }
-
-    private fun nextParagraph() {
-        if (chapterContents.isEmpty()) return
-        val currentParagraphs = chapterContents[currentChapterIndex]
-        if (currentParagraphIndex + 1 < currentParagraphs.size) {
-            currentParagraphIndex++
-            sound.play(R.raw.page_flip)
-            showCurrentContent()
-            if (isPlaying) {
-                tts.stop()
-                readCurrentParagraph()
-            }
-            saveProgress()
-        } else if (currentChapterIndex + 1 < chapterContents.size) {
-            // Siguiente capítulo
-            currentChapterIndex++
-            currentParagraphIndex = 0
-            sound.play(R.raw.page_flip)
-            showCurrentContent()
-            if (isPlaying) {
-                tts.stop()
-                readCurrentParagraph()
-            }
-            saveProgress()
-        } else {
-            Toast.makeText(this, "Fin del libro", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun previousParagraph() {
-        if (chapterContents.isEmpty()) return
-        if (currentParagraphIndex - 1 >= 0) {
-            currentParagraphIndex--
-            sound.play(R.raw.page_flip)
-            showCurrentContent()
-            if (isPlaying) {
-                tts.stop()
-                readCurrentParagraph()
-            }
-            saveProgress()
-        } else if (currentChapterIndex - 1 >= 0) {
-            currentChapterIndex--
-            val prevParagraphs = chapterContents[currentChapterIndex]
-            currentParagraphIndex = prevParagraphs.size - 1
-            sound.play(R.raw.page_flip)
-            showCurrentContent()
-            if (isPlaying) {
-                tts.stop()
-                readCurrentParagraph()
-            }
-            saveProgress()
-        } else {
-            Toast.makeText(this, "Inicio del libro", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun startReading() {
@@ -377,65 +415,189 @@ class ReaderActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         saveProgress()
     }
 
+    private fun splitTextForTts(text: String, maxLength: Int = 800): List<String> {
+        if (text.length <= maxLength) return listOf(text)
+        val sentences = text.split(Regex("(?<=[.!?])\\s+"))
+        val chunks = mutableListOf<String>()
+        val currentChunk = StringBuilder()
+        for (sentence in sentences) {
+            if (currentChunk.length + sentence.length + 1 > maxLength) {
+                if (currentChunk.isNotEmpty()) {
+                    chunks.add(currentChunk.toString().trim())
+                    currentChunk.clear()
+                }
+                if (sentence.length > maxLength) {
+                    var remaining = sentence
+                    while (remaining.length > maxLength) {
+                        val splitPos = remaining.take(maxLength).lastIndexOf(' ')
+                        val chunk = if (splitPos > 0) remaining.substring(0, splitPos) else remaining.take(maxLength)
+                        chunks.add(chunk.trim())
+                        remaining = remaining.substring(chunk.length).trimStart()
+                    }
+                    if (remaining.isNotEmpty()) currentChunk.append(remaining)
+                } else {
+                    currentChunk.append(sentence)
+                }
+            } else {
+                if (currentChunk.isNotEmpty()) currentChunk.append(" ")
+                currentChunk.append(sentence)
+            }
+        }
+        if (currentChunk.isNotEmpty()) chunks.add(currentChunk.toString().trim())
+        return chunks.ifEmpty { listOf(text) }
+    }
+
     private fun readCurrentParagraph() {
         if (!isPlaying) return
-        val paragraphs = chapterContents[currentChapterIndex]
-        if (currentParagraphIndex < paragraphs.size) {
-            val text = paragraphs[currentParagraphIndex]
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
-            turtleView.startMoving()
-            // Programar siguiente párrafo cuando termine
-            tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {}
-                override fun onDone(utteranceId: String?) {
-                    runOnUiThread {
-                        if (isPlaying) {
-                            nextParagraph()
-                        }
-                        turtleView.stopMoving()
-                    }
-                }
-                override fun onError(utteranceId: String?) {
-                    runOnUiThread {
-                        turtleView.stopMoving()
-                    }
-                }
-            })
-        } else {
+        if (currentChapterIndex >= chapterContents.size) {
             pauseReading()
+            Toast.makeText(this, "Fin del libro", Toast.LENGTH_SHORT).show()
+            return
         }
+        val paragraphs = chapterContents[currentChapterIndex]
+        if (currentParagraphIndex >= paragraphs.size) {
+            sound.play(R.raw.page_flip)
+            currentParagraphIndex = 0
+            currentChapterIndex++
+            if (currentChapterIndex < chapterContents.size) {
+                showCurrentContent()
+                saveProgress()
+                readCurrentParagraph()
+            } else {
+                pauseReading()
+                Toast.makeText(this, "Has terminado el libro", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        val text = paragraphs[currentParagraphIndex]
+        val chunks = splitTextForTts(text)
+        var chunkIndex = 0
+
+        fun speakNextChunk() {
+            if (!isPlaying) return
+            if (chunkIndex < chunks.size) {
+                tts.speak(chunks[chunkIndex]) {
+                    runOnUiThread {
+                        chunkIndex++
+                        speakNextChunk()
+                    }
+                }
+            } else {
+                runOnUiThread {
+                    currentParagraphIndex++
+                    saveProgress()
+                    val totalParagraphs = chapterContents[currentChapterIndex].size
+                    turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
+                    readCurrentParagraph()
+                    showCurrentContent()
+                }
+            }
+        }
+        speakNextChunk()
     }
 
     private fun saveProgress() {
-        val prefs = getSharedPreferences("OASIS_Reader", Context.MODE_PRIVATE)
-        prefs.edit().putInt("chapter_${bookUri}", currentChapterIndex)
-            .putInt("paragraph_${bookUri}", currentParagraphIndex)
-            .apply()
+        prefs.edit().putInt("last_chapter_index", currentChapterIndex).apply()
+        prefs.edit().putInt("last_paragraph_index", currentParagraphIndex).apply()
     }
 
-    private fun loadProgress() {
-        val prefs = getSharedPreferences("OASIS_Reader", Context.MODE_PRIVATE)
-        currentChapterIndex = prefs.getInt("chapter_${bookUri}", 0)
-        currentParagraphIndex = prefs.getInt("paragraph_${bookUri}", 0)
-        if (currentChapterIndex >= chapterTitles.size) currentChapterIndex = 0
-        if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
-        showCurrentContent()
+       private fun setupSliders() {
+        seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    sound.play(R.raw.deslizar)
+                    val speed = 0.5f + (progress / 100f) * 1.5f
+                    speedValueText.text = String.format("%.1fx", speed)
+                    prefs.edit().putFloat("voice_speed", speed).apply()
+                    tts.updateSpeechSettings()
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        seekPitch.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    sound.play(R.raw.deslizar)
+                    val pitch = 0.5f + (progress / 100f) * 1.0f
+                    pitchValueText.text = String.format("%.1fx", pitch)
+                    prefs.edit().putFloat("voice_pitch", pitch).apply()
+                    tts.updateSpeechSettings()
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        seekBrightness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) sound.play(R.raw.deslizar)
+                val alpha = progress / 100f
+                findViewById<View>(R.id.scroll_text).alpha = alpha
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        seekTextSize.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) sound.play(R.raw.deslizar)
+                tvBookContent.textSize = progress.toFloat()
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        val savedSpeed = prefs.getFloat("voice_speed", 1.0f)
+        val savedPitch = prefs.getFloat("voice_pitch", 1.0f)
+        seekSpeed.progress = ((savedSpeed - 0.5f) / 1.5f * 100).toInt().coerceIn(0, 100)
+        seekPitch.progress = ((savedPitch - 0.5f) / 1.0f * 100).toInt().coerceIn(0, 100)
+        speedValueText.text = String.format("%.1fx", savedSpeed)
+        pitchValueText.text = String.format("%.1fx", savedPitch)
     }
 
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            tts.language = Locale.getDefault()
+    private fun setupThemes() {
+        val themes = mapOf("amanecer" to themeSol, "caribe" to themeNubes, "noche" to themeLuna)
+        val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorNubes, "noche" to indicatorLuna)
+        themeSol.setOnClickListener { changeTheme("amanecer", themes, indicators) }
+        themeLuna.setOnClickListener { changeTheme("noche", themes, indicators) }
+        themeNubes.setOnClickListener { changeTheme("caribe", themes, indicators) }
+        val currentTheme = prefs.getString("selected_theme", "amanecer") ?: "amanecer"
+        updateThemeUI(currentTheme, indicators)
+        applyTheme(currentTheme)
+    }
+
+    private fun changeTheme(themeKey: String, themes: Map<String, View>, indicators: Map<String, ImageView>) {
+        sound.play(R.raw.check_on)
+        prefs.edit().putString("selected_theme", themeKey).apply()
+        updateThemeUI(themeKey, indicators)
+        applyTheme(themeKey)
+    }
+
+    private fun updateThemeUI(themeKey: String, indicators: Map<String, ImageView>) {
+        indicators.values.forEach { it.visibility = View.GONE }
+        indicators[themeKey]?.visibility = View.VISIBLE
+    }
+
+    private fun applyTheme(themeKey: String) {
+        val bgRes = when (themeKey) {
+            "caribe" -> R.color.caribe_background
+            "noche" -> R.color.oscuro_background
+            else -> R.color.amanecer_background
         }
+        window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
+        val textColorRes = when (themeKey) {
+            "amanecer" -> R.color.amanecer_text
+            "caribe" -> R.color.caribe_text
+            "noche" -> R.color.oscuro_text
+            else -> R.color.amanecer_text
+        }
+        tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
+        val isNight = themeKey == "noche"
+        turtleWidget.setNightMode(isNight)
     }
 
     override fun onDestroy() {
-        tts.shutdown()
-        sound.release()
         super.onDestroy()
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        gestureDetector.onTouchEvent(event)
-        return super.onTouchEvent(event)
+        sound.release()
+        tts.shutdown()
+        saveProgress()
     }
 }
