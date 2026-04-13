@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
 
@@ -14,6 +15,141 @@ class EpubParser(private val contentResolver: ContentResolver) {
         val chapterContents: MutableList<List<String>>
     )
 
+    // ---------- NUEVAS FUNCIONES PARA ÍNDICE JERÁRQUICO ----------
+    fun getHierarchicalChapters(uri: Uri): List<ChapterNode> {
+        val inputStream = contentResolver.openInputStream(uri) ?: return emptyList()
+        val zip = ZipInputStream(inputStream)
+
+        var containerXml = ""
+        var entry = zip.nextEntry
+        while (entry != null) {
+            if (entry.name.equals("META-INF/container.xml", ignoreCase = true)) {
+                containerXml = String(zip.readBytes(), Charsets.UTF_8)
+                break
+            }
+            entry = zip.nextEntry
+        }
+        zip.close()
+        if (containerXml.isEmpty()) return emptyList()
+
+        val opfPath = parseContainerXml(containerXml) ?: return emptyList()
+
+        val zip2 = ZipInputStream(contentResolver.openInputStream(uri))
+        var opfContent = ""
+        var opfDir = ""
+        entry = zip2.nextEntry
+        while (entry != null) {
+            if (entry.name.equals(opfPath, ignoreCase = true)) {
+                opfContent = String(zip2.readBytes(), Charsets.UTF_8)
+                opfDir = File(opfPath).parent ?: ""
+                break
+            }
+            entry = zip2.nextEntry
+        }
+        zip2.close()
+        if (opfContent.isEmpty()) return emptyList()
+
+        val ncxPath = extractNcxPathFromOpf(opfContent, opfDir) ?: return emptyList()
+
+        val zip3 = ZipInputStream(contentResolver.openInputStream(uri))
+        val nodes = parseNcxFromZip(zip3, ncxPath)
+        zip3.close()
+        return nodes
+    }
+
+    private fun extractNcxPathFromOpf(opfXml: String, opfDir: String): String? {
+        try {
+            val factory = XmlPullParserFactory.newInstance()
+            val parser = factory.newPullParser()
+            parser.setInput(opfXml.reader())
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG && parser.name == "item") {
+                    val id = parser.getAttributeValue(null, "id")
+                    val href = parser.getAttributeValue(null, "href")
+                    val mediaType = parser.getAttributeValue(null, "media-type")
+                    if (mediaType == "application/x-dtbncx+xml" || id == "ncx") {
+                        val fullPath = if (opfDir.isNotEmpty()) "$opfDir/$href" else href
+                        return fullPath
+                    }
+                }
+                eventType = parser.next()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
+
+    private fun parseNcxFromZip(zip: ZipInputStream, ncxPath: String): List<ChapterNode> {
+        var entry = zip.nextEntry
+        while (entry != null) {
+            if (entry.name.equals(ncxPath, ignoreCase = true)) {
+                val content = String(zip.readBytes(), Charsets.UTF_8)
+                return parseNcxContent(content)
+            }
+            entry = zip.nextEntry
+        }
+        return emptyList()
+    }
+
+    private fun parseNcxContent(ncxXml: String): List<ChapterNode> {
+        val nodes = mutableListOf<ChapterNode>()
+        try {
+            val factory = XmlPullParserFactory.newInstance()
+            val parser = factory.newPullParser()
+            parser.setInput(ByteArrayInputStream(ncxXml.toByteArray(Charsets.UTF_8)), null)
+            var eventType = parser.eventType
+            val stack = ArrayDeque<MutableList<ChapterNode>>()
+            var currentNavPointList: MutableList<ChapterNode>? = null
+            var currentTitle = ""
+            var currentSrc = ""
+
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        when (parser.name) {
+                            "navPoint" -> {
+                                stack.addLast(mutableListOf())
+                                currentNavPointList = stack.last()
+                            }
+                            "text" -> {
+                                if (stack.isNotEmpty()) {
+                                    currentTitle = parser.nextText()
+                                }
+                            }
+                            "content" -> {
+                                currentSrc = parser.getAttributeValue(null, "src") ?: ""
+                            }
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        when (parser.name) {
+                            "navPoint" -> {
+                                val node = ChapterNode(currentTitle, currentSrc, currentNavPointList ?: mutableListOf())
+                                currentTitle = ""
+                                currentSrc = ""
+                                stack.removeLast()
+                                if (stack.isEmpty()) {
+                                    nodes.add(node)
+                                } else {
+                                    stack.last().add(node)
+                                }
+                                currentNavPointList = if (stack.isNotEmpty()) stack.last() else null
+                            }
+                        }
+                    }
+                }
+                eventType = parser.next()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return nodes
+    }
+    // ---------- FIN NUEVAS FUNCIONES ----------
+
+    // ---------- FUNCIONES ORIGINALES (sin cambios) ----------
     fun parse(uri: Uri): ParsedEpub {
         val mainTitles = mutableListOf<String>()
         val mainContents = mutableListOf<List<String>>()
@@ -81,7 +217,6 @@ class EpubParser(private val contentResolver: ContentResolver) {
             val totalLength = plainText.length
             val isMainChapter = totalLength >= MIN_CHAR_COUNT
 
-            // Extraer título del primer encabezado HTML
             val extractedTitle = extractTitleFromHtml(rawHtml)
 
             if (isMainChapter) {
@@ -104,7 +239,6 @@ class EpubParser(private val contentResolver: ContentResolver) {
             }
         }
 
-        // Combinar listas: principales primero, luego apéndices
         val finalTitles = mutableListOf<String>().apply {
             addAll(mainTitles)
             addAll(appendixTitles)
@@ -119,20 +253,14 @@ class EpubParser(private val contentResolver: ContentResolver) {
 
     private fun splitHtmlIntoParagraphs(html: String): List<String> {
         val paragraphs = mutableListOf<String>()
-        
-        // Eliminar contenido de <head> si existe
         val bodyContent = html.replace(Regex("(?s)<head>.*?</head>"), "")
-        
-        // Dividir por etiquetas <p>, </p>, <div>, </div>, <br>, <h1>-<h6>
         val parts = bodyContent.split(Regex("(?i)<p[^>]*>|</p>|<div[^>]*>|</div>|<br[^>]*>|<h[1-6][^>]*>|</h[1-6]>"))
-        
         for (part in parts) {
             val trimmed = part.trim()
             if (trimmed.isNotEmpty() && !trimmed.startsWith("<") && !trimmed.endsWith(">")) {
                 paragraphs.add(trimmed)
             }
         }
-        
         return if (paragraphs.isEmpty()) listOf(htmlToPlainText(html)) else paragraphs
     }
 
