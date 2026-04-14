@@ -63,7 +63,8 @@ class ReaderActivity : AppCompatActivity() {
 
     // Índice jerárquico
     private var hierarchicalChapters: List<ChapterNode> = emptyList()
-    private var chapterNodeMap = mutableMapOf<Int, ChapterNode>()
+    // Mapa de título limpio -> índice en la lista plana
+    private val titleToIndexMap = mutableMapOf<String, Int>()
 
     private lateinit var epubParser: EpubParser
 
@@ -229,10 +230,15 @@ class ReaderActivity : AppCompatActivity() {
             }
             chapterTitles = parsed.chapterTitles
             chapterContents = parsed.chapterContents
+            // Construir mapa de título limpio a índice
+            titleToIndexMap.clear()
+            chapterTitles.forEachIndexed { index, title ->
+                titleToIndexMap[cleanHtmlTitle(title)] = index
+            }
             // Cargar índice jerárquico
             hierarchicalChapters = epubParser.getHierarchicalChapters(uri)
             if (hierarchicalChapters.isNotEmpty()) {
-                flattenNodes(hierarchicalChapters)
+                // No necesitamos flattenNodes si usamos el mapa
             }
             currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
             currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
@@ -300,12 +306,12 @@ class ReaderActivity : AppCompatActivity() {
         }
         expandableListView.setOnGroupClickListener { _, _, groupPosition, _ ->
             val node = getNodeAtPosition(groupPosition, hierarchicalChapters)
-            if (node?.isLeaf() == true) {
+            if (node != null && node.children.isEmpty()) {
                 jumpToChapter(node)
                 dialog.dismiss()
                 return@setOnGroupClickListener true
             }
-            false
+            false // permite expandir si tiene hijos
         }
         dialog.show()
     }
@@ -317,7 +323,7 @@ class ReaderActivity : AppCompatActivity() {
     ) {
         for (node in nodes) {
             val groupMap = HashMap<String, String>()
-           groupMap["title"] = cleanHtmlTitle(node.title)
+            groupMap["title"] = cleanHtmlTitle(node.title)
             groupList.add(groupMap)
             val childrenArray = ArrayList<Map<String, String>>()
             for (child in node.children) {
@@ -350,8 +356,18 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun jumpToChapter(node: ChapterNode) {
-           val index = chapterTitles.indexOf(cleanHtmlTitle(node.title))
-        if (index != -1 && index != currentChapterIndex) {
+        // Primero intentar con el título limpio del nodo
+        val cleanTitle = cleanHtmlTitle(node.title)
+        var index = titleToIndexMap[cleanTitle]
+        // Si no se encuentra, intentar búsqueda parcial (por si hay diferencias)
+        if (index == null) {
+            index = chapterTitles.indexOfFirst { cleanHtmlTitle(it).contains(cleanTitle, ignoreCase = true) }
+        }
+        // Si aún no se encuentra, usar el orden de aplanamiento (menos fiable)
+        if (index == null || index == -1) {
+            index = getFlatIndexForNode(node)
+        }
+        if (index != null && index in chapterTitles.indices && index != currentChapterIndex) {
             sound.play(R.raw.page_flip)
             currentChapterIndex = index
             currentParagraphIndex = 0
@@ -359,31 +375,25 @@ class ReaderActivity : AppCompatActivity() {
             showCurrentContent()
             saveProgress()
         } else {
-            val flatIndex = getFlatIndexForNode(node)
-            if (flatIndex in chapterTitles.indices && flatIndex != currentChapterIndex) {
-                sound.play(R.raw.page_flip)
-                currentChapterIndex = flatIndex
-                currentParagraphIndex = 0
-                tts.stop()
-                showCurrentContent()
-                saveProgress()
-            } else {
-                Toast.makeText(this, "No se pudo encontrar el capítulo", Toast.LENGTH_SHORT).show()
-            }
+            Toast.makeText(this, "No se pudo encontrar el capítulo: ${cleanTitle}", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun flattenNodes(nodes: List<ChapterNode>) {
-        for (node in nodes) {
-            chapterNodeMap[chapterNodeMap.size] = node
-            if (node.children.isNotEmpty()) {
-                flattenNodes(node.children)
+    private fun getFlatIndexForNode(node: ChapterNode): Int? {
+        // Recorrer jerárquicamente y devolver el orden de aparición en profundidad
+        var counter = 0
+        fun dfs(nodes: List<ChapterNode>): Int? {
+            for (n in nodes) {
+                if (n === node) return counter
+                counter++
+                if (n.children.isNotEmpty()) {
+                    val found = dfs(n.children)
+                    if (found != null) return found
+                }
             }
+            return null
         }
-    }
-
-    private fun getFlatIndexForNode(node: ChapterNode): Int {
-        return chapterNodeMap.entries.find { it.value === node }?.key ?: -1
+        return dfs(hierarchicalChapters)
     }
 
     private fun showFlatChapterDialog() {
@@ -500,7 +510,17 @@ class ReaderActivity : AppCompatActivity() {
         prefs.edit().putInt("last_paragraph_index", currentParagraphIndex).apply()
     }
 
-       private fun setupSliders() {
+    private fun setupSliders() {
+        seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    sound.play(R.raw.deslizar)
+                    val speed = 0.5f + (progress / 100f) * 1.5f
+                    speedValueText.text = String.fo
+                    ____________________________________________
+                    
+                    
+                    private fun setupSliders() {
         seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
@@ -574,12 +594,12 @@ class ReaderActivity : AppCompatActivity() {
         indicators.values.forEach { it.visibility = View.GONE }
         indicators[themeKey]?.visibility = View.VISIBLE
     }
-   
+
     private fun cleanHtmlTitle(html: String): String {
-    return html.replace(Regex("<[^>]*>"), "").trim().let {
-        if (it.isBlank() || it.length < 2) "Sección" else it
+        return html.replace(Regex("<[^>]*>"), "").trim().let {
+            if (it.isBlank() || it.length < 2) "Sección" else it
+        }
     }
-}
 
     private fun applyTheme(themeKey: String) {
         val bgRes = when (themeKey) {
@@ -606,3 +626,4 @@ class ReaderActivity : AppCompatActivity() {
         saveProgress()
     }
 }
+                    
