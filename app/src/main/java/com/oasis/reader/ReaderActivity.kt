@@ -592,22 +592,35 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun applyTheme(themeKey: String) {
-        val bgRes = when (themeKey) {
-            "caribe" -> R.color.caribe_background
-            "noche" -> R.color.oscuro_background
-            else -> R.color.amanecer_background
+    // Aplicar fondo de imagen según el tema
+    when (themeKey) {
+        "noche" -> {
+            window.decorView.setBackgroundResource(R.drawable.fondo_noche)
+            drawerLayout.setBackgroundResource(R.drawable.fondo_noche)
         }
-        window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
-        val textColorRes = when (themeKey) {
-            "amanecer" -> R.color.amanecer_text
-            "caribe" -> R.color.caribe_text
-            "noche" -> R.color.oscuro_text
-            else -> R.color.amanecer_text
+        "caribe" -> {
+            window.decorView.setBackgroundResource(R.drawable.fondo_nube)
+            drawerLayout.setBackgroundResource(R.drawable.fondo_nube)
         }
-        tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
-        val isNight = themeKey == "noche"
-        turtleWidget.setNightMode(isNight)
+        else -> { // "amanecer" y cualquier otro
+            window.decorView.setBackgroundResource(R.drawable.fondo_dia)
+            drawerLayout.setBackgroundResource(R.drawable.fondo_dia)
+        }
     }
+
+    // Color del texto del contenido del libro (mantener según el tema)
+    val textColorRes = when (themeKey) {
+        "amanecer" -> R.color.amanecer_text
+        "caribe" -> R.color.caribe_text
+        "noche" -> R.color.oscuro_text
+        else -> R.color.amanecer_text
+    }
+    tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
+
+    // Modo noche para la tortuga
+    val isNight = themeKey == "noche"
+    turtleWidget.setNightMode(isNight)
+}
 
     override fun onDestroy() {
         super.onDestroy()
