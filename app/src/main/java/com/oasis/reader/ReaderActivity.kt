@@ -597,15 +597,13 @@ class ReaderActivity : AppCompatActivity() {
     private fun applyTheme(themeKey: String) {
     when (themeKey) {
         "noche" -> {
-            // Gradiente solo para el drawer (no para la pantalla de lectura)
             val gradient = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(
-                    Color.parseColor("#252525"),
-                    Color.parseColor("#545454")
-                )
+                intArrayOf(Color.parseColor("#252525"), Color.parseColor("#545454"))
             )
-            drawerLayout.background = gradient  // Solo el drawer
+            drawerLayout.background = gradient
+            window.statusBarColor = Color.parseColor("#252525")
+            window.decorView.setBackgroundColor(Color.parseColor("#252525"))
 
             val textoPrincipal = Color.parseColor("#F4FCFB")
             val textoValores = Color.parseColor("#ACBCBF")
@@ -622,15 +620,14 @@ class ReaderActivity : AppCompatActivity() {
 
             turtleWidget.setNightMode(true)
         }
-        "caribe" -> {  // Coincide con el nombre que se usa en changeTheme
+        "caribe" -> {
             val gradient = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(
-                    Color.parseColor("#FFB07C"),
-                    Color.parseColor("#A7C7E7")
-                )
+                intArrayOf(Color.parseColor("#FFB07C"), Color.parseColor("#A7C7E7"))
             )
             drawerLayout.background = gradient
+            window.statusBarColor = Color.parseColor("#FFB07C")
+            window.decorView.setBackgroundColor(Color.parseColor("#FFB07C"))
 
             val textoPrincipal = Color.parseColor("#F4FCFB")
             val textoValores = Color.parseColor("#ACBCBF")
@@ -647,10 +644,11 @@ class ReaderActivity : AppCompatActivity() {
 
             turtleWidget.setNightMode(false)
         }
-        else -> { // "amanecer"
+        else -> {
             val bgRes = R.color.amanecer_background
             window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
             drawerLayout.setBackgroundColor(ContextCompat.getColor(this, bgRes))
+            window.statusBarColor = ContextCompat.getColor(this, bgRes)
             val textColorRes = R.color.amanecer_text
             tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
             turtleWidget.setNightMode(false)
