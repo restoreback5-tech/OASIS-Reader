@@ -17,6 +17,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.content.res.ColorStateList
 import com.oasis.turtle.TurtleView
 import kotlin.math.abs
 
@@ -594,49 +597,62 @@ class ReaderActivity : AppCompatActivity() {
     private fun applyTheme(themeKey: String) {
     when (themeKey) {
         "noche" -> {
-            // Paleta "Ink wash"
-            val fondo = android.graphics.Color.parseColor("#252525")
-            val textoPrincipal = android.graphics.Color.parseColor("#CFCFCF")
-            val textoValores = android.graphics.Color.parseColor("#7D7D7D")
-            val acento = android.graphics.Color.parseColor("#545454")
+            // Gradiente solo para el drawer (no para la pantalla de lectura)
+            val gradient = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    Color.parseColor("#252525"),
+                    Color.parseColor("#545454")
+                )
+            )
+            drawerLayout.background = gradient  // Solo el drawer
 
-            window.decorView.setBackgroundColor(fondo)
-            drawerLayout.setBackgroundColor(fondo)
+            val textoPrincipal = Color.parseColor("#F4FCFB")
+            val textoValores = Color.parseColor("#ACBCBF")
+            val acento = Color.parseColor("#698696")
+
             tvBookContent.setTextColor(textoPrincipal)
             speedValueText.setTextColor(textoValores)
             pitchValueText.setTextColor(textoValores)
-            seekSpeed.progressTintList = android.content.res.ColorStateList.valueOf(acento)
-            seekPitch.progressTintList = android.content.res.ColorStateList.valueOf(acento)
-            seekBrightness.progressTintList = android.content.res.ColorStateList.valueOf(acento)
-            seekTextSize.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+
+            seekSpeed.progressTintList = ColorStateList.valueOf(acento)
+            seekPitch.progressTintList = ColorStateList.valueOf(acento)
+            seekBrightness.progressTintList = ColorStateList.valueOf(acento)
+            seekTextSize.progressTintList = ColorStateList.valueOf(acento)
+
             turtleWidget.setNightMode(true)
         }
-        "caribe" -> {
-            // Paleta "Arctic reflection"
-            val fondo = android.graphics.Color.parseColor("#243C4C")
-            val textoPrincipal = android.graphics.Color.parseColor("#F4FCFB")
-            val textoValores = android.graphics.Color.parseColor("#ACBCBF")
-            val acento = android.graphics.Color.parseColor("#698696")
+        "caribe" -> {  // Coincide con el nombre que se usa en changeTheme
+            val gradient = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    Color.parseColor("#FFB07C"),
+                    Color.parseColor("#A7C7E7")
+                )
+            )
+            drawerLayout.background = gradient
 
-            window.decorView.setBackgroundColor(fondo)
-            drawerLayout.setBackgroundColor(fondo)
+            val textoPrincipal = Color.parseColor("#F4FCFB")
+            val textoValores = Color.parseColor("#ACBCBF")
+            val acento = Color.parseColor("#698696")
+
             tvBookContent.setTextColor(textoPrincipal)
             speedValueText.setTextColor(textoValores)
             pitchValueText.setTextColor(textoValores)
-            seekSpeed.progressTintList = android.content.res.ColorStateList.valueOf(acento)
-            seekPitch.progressTintList = android.content.res.ColorStateList.valueOf(acento)
-            seekBrightness.progressTintList = android.content.res.ColorStateList.valueOf(acento)
-            seekTextSize.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+
+            seekSpeed.progressTintList = ColorStateList.valueOf(acento)
+            seekPitch.progressTintList = ColorStateList.valueOf(acento)
+            seekBrightness.progressTintList = ColorStateList.valueOf(acento)
+            seekTextSize.progressTintList = ColorStateList.valueOf(acento)
+
             turtleWidget.setNightMode(false)
         }
-        else -> { // "amanecer" y cualquier otro (sin cambios)
+        else -> { // "amanecer"
             val bgRes = R.color.amanecer_background
             window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
             drawerLayout.setBackgroundColor(ContextCompat.getColor(this, bgRes))
             val textColorRes = R.color.amanecer_text
             tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
-            // Restaurar colores de sliders a los valores originales (se definen en setupSliders)
-            // No es necesario cambiarlos aquí porque ya se inicializan con los valores por defecto.
             turtleWidget.setNightMode(false)
         }
     }
