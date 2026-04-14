@@ -15,7 +15,6 @@ class EpubParser(private val contentResolver: ContentResolver) {
         val chapterContents: MutableList<List<String>>
     )
 
-    // ---------- NUEVAS FUNCIONES PARA ÍNDICE JERÁRQUICO ----------
     fun getHierarchicalChapters(uri: Uri): List<ChapterNode> {
         val inputStream = contentResolver.openInputStream(uri) ?: return emptyList()
         val zip = ZipInputStream(inputStream)
@@ -100,8 +99,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
             val parser = factory.newPullParser()
             parser.setInput(ByteArrayInputStream(ncxXml.toByteArray(Charsets.UTF_8)), null)
             var eventType = parser.eventType
-            val stack = ArrayDeque<MutableList<ChapterNode>>()
-            var currentNavPointList: MutableList<ChapterNode>? = null
+            val stack = ArrayDeque<Triple<MutableList<ChapterNode>, String, String>>()
             var currentTitle = ""
             var currentSrc = ""
 
@@ -110,8 +108,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
                     XmlPullParser.START_TAG -> {
                         when (parser.name) {
                             "navPoint" -> {
-                                stack.addLast(mutableListOf())
-                                currentNavPointList = stack.last()
+                                stack.addLast(Triple(mutableListOf(), "", ""))
                             }
                             "text" -> {
                                 if (stack.isNotEmpty()) {
@@ -126,16 +123,16 @@ class EpubParser(private val contentResolver: ContentResolver) {
                     XmlPullParser.END_TAG -> {
                         when (parser.name) {
                             "navPoint" -> {
-                                val node = ChapterNode(currentTitle, currentSrc, currentNavPointList ?: mutableListOf())
+                                val (children, _, _) = stack.removeLast()
+                                val node = ChapterNode(currentTitle, currentSrc, children)
                                 currentTitle = ""
                                 currentSrc = ""
-                                stack.removeLast()
                                 if (stack.isEmpty()) {
                                     nodes.add(node)
                                 } else {
-                                    stack.last().add(node)
+                                    val (parentChildren, _, _) = stack.last()
+                                    parentChildren.add(node)
                                 }
-                                currentNavPointList = if (stack.isNotEmpty()) stack.last() else null
                             }
                         }
                     }
@@ -147,9 +144,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
         }
         return nodes
     }
-    // ---------- FIN NUEVAS FUNCIONES ----------
 
-    // ---------- FUNCIONES ORIGINALES (sin cambios) ----------
     fun parse(uri: Uri): ParsedEpub {
         val mainTitles = mutableListOf<String>()
         val mainContents = mutableListOf<List<String>>()
@@ -180,7 +175,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
         while (entry != null) {
             if (entry.name.equals(opfPath, ignoreCase = true)) {
                 opfContent = String(zip2.readBytes(), Charsets.UTF_8)
-                opfDir = opfPath.let { File(it).parent } ?: ""
+                opfDir = File(opfPath).parent ?: ""
                 break
             }
             entry = zip2.nextEntry
@@ -334,10 +329,21 @@ class EpubParser(private val contentResolver: ContentResolver) {
         return Pair(items, spine)
     }
 
+    private fun decodeHtmlEntities(text: String): String {
+        var result = text
+        result = result.replace("&nbsp;", " ")
+        result = result.replace("&amp;", "&")
+        result = result.replace("&lt;", "<")
+        result = result.replace("&gt;", ">")
+        result = result.replace("&quot;", "\"")
+        result = result.replace("&#39;", "'")
+        return result
+    }
+
     private fun htmlToPlainText(html: String): String {
-        return html.replace(Regex("<[^>]*>"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        val withoutTags = html.replace(Regex("<[^>]*>"), " ")
+        val decoded = decodeHtmlEntities(withoutTags)
+        return decoded.replace(Regex("\\s+"), " ").trim()
     }
 
     private fun convertToRoman(num: Int): String {

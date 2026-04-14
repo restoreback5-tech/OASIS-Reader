@@ -588,11 +588,24 @@ class ReaderActivity : AppCompatActivity() {
         indicators[themeKey]?.visibility = View.VISIBLE
     }
 
+    private fun decodeHtmlEntities(text: String): String {
+    var result = text
+    result = result.replace("&nbsp;", " ")
+    result = result.replace("&amp;", "&")
+    result = result.replace("&lt;", "<")
+    result = result.replace("&gt;", ">")
+    result = result.replace("&quot;", "\"")
+    result = result.replace("&#39;", "'")
+    return result
+}
+
     private fun cleanHtmlTitle(html: String): String {
-        return html.replace(Regex("<[^>]*>"), "").trim().let {
-            if (it.isBlank() || it.length < 2) "Sección" else it
-        }
+    val withoutTags = html.replace(Regex("<[^>]*>"), "")
+    val decoded = decodeHtmlEntities(withoutTags)
+    return decoded.trim().let {
+        if (it.isBlank() || it.length < 2) "Sección" else it
     }
+}
 
     private fun applyTheme(themeKey: String) {
     when (themeKey) {
@@ -621,13 +634,11 @@ class ReaderActivity : AppCompatActivity() {
             turtleWidget.setNightMode(true)
         }
         "caribe" -> {
-            val gradient = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.parseColor("#FFB07C"), Color.parseColor("#A7C7E7"))
-            )
-            drawerLayout.background = gradient
-            window.statusBarColor = Color.parseColor("#FFB07C")
-            window.decorView.setBackgroundColor(Color.parseColor("#FFB07C"))
+            // Nuevos colores basados en Arctic reflection para mejor contraste
+            val fondo = Color.parseColor("#243C4C")
+            drawerLayout.setBackgroundColor(fondo)
+            window.statusBarColor = fondo
+            window.decorView.setBackgroundColor(fondo)
 
             val textoPrincipal = Color.parseColor("#F4FCFB")
             val textoValores = Color.parseColor("#ACBCBF")
