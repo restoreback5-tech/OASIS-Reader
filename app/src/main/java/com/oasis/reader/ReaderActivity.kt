@@ -510,16 +510,6 @@ class ReaderActivity : AppCompatActivity() {
         prefs.edit().putInt("last_paragraph_index", currentParagraphIndex).apply()
     }
 
-    private fun setupSliders() {
-        seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    sound.play(R.raw.deslizar)
-                    val speed = 0.5f + (progress / 100f) * 1.5f
-                    speedValueText.text = String.fo
-                    ____________________________________________
-                    
-                    
                     private fun setupSliders() {
         seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
