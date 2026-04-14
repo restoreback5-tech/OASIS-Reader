@@ -198,7 +198,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
         }
         zip3.close()
 
-        val MIN_CHAR_COUNT = 500
+        val MIN_CHAR_COUNT = 50
 
         for (href in spine) {
             val rawHtml = filesMap[href] ?: continue
