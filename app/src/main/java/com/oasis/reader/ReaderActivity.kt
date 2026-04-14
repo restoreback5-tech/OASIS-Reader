@@ -592,34 +592,54 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun applyTheme(themeKey: String) {
-    // Aplicar fondo de imagen según el tema
     when (themeKey) {
         "noche" -> {
-            window.decorView.setBackgroundResource(R.drawable.fondo_noche)
-            drawerLayout.setBackgroundResource(R.drawable.fondo_noche)
+            // Paleta "Ink wash"
+            val fondo = android.graphics.Color.parseColor("#252525")
+            val textoPrincipal = android.graphics.Color.parseColor("#CFCFCF")
+            val textoValores = android.graphics.Color.parseColor("#7D7D7D")
+            val acento = android.graphics.Color.parseColor("#545454")
+
+            window.decorView.setBackgroundColor(fondo)
+            drawerLayout.setBackgroundColor(fondo)
+            tvBookContent.setTextColor(textoPrincipal)
+            speedValueText.setTextColor(textoValores)
+            pitchValueText.setTextColor(textoValores)
+            seekSpeed.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+            seekPitch.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+            seekBrightness.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+            seekTextSize.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+            turtleWidget.setNightMode(true)
         }
         "caribe" -> {
-            window.decorView.setBackgroundResource(R.drawable.fondo_nube)
-            drawerLayout.setBackgroundResource(R.drawable.fondo_nube)
+            // Paleta "Arctic reflection"
+            val fondo = android.graphics.Color.parseColor("#243C4C")
+            val textoPrincipal = android.graphics.Color.parseColor("#F4FCFB")
+            val textoValores = android.graphics.Color.parseColor("#ACBCBF")
+            val acento = android.graphics.Color.parseColor("#698696")
+
+            window.decorView.setBackgroundColor(fondo)
+            drawerLayout.setBackgroundColor(fondo)
+            tvBookContent.setTextColor(textoPrincipal)
+            speedValueText.setTextColor(textoValores)
+            pitchValueText.setTextColor(textoValores)
+            seekSpeed.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+            seekPitch.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+            seekBrightness.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+            seekTextSize.progressTintList = android.content.res.ColorStateList.valueOf(acento)
+            turtleWidget.setNightMode(false)
         }
-        else -> { // "amanecer" y cualquier otro
-            window.decorView.setBackgroundResource(R.drawable.fondo_dia)
-            drawerLayout.setBackgroundResource(R.drawable.fondo_dia)
+        else -> { // "amanecer" y cualquier otro (sin cambios)
+            val bgRes = R.color.amanecer_background
+            window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
+            drawerLayout.setBackgroundColor(ContextCompat.getColor(this, bgRes))
+            val textColorRes = R.color.amanecer_text
+            tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
+            // Restaurar colores de sliders a los valores originales (se definen en setupSliders)
+            // No es necesario cambiarlos aquí porque ya se inicializan con los valores por defecto.
+            turtleWidget.setNightMode(false)
         }
     }
-
-    // Color del texto del contenido del libro (mantener según el tema)
-    val textColorRes = when (themeKey) {
-        "amanecer" -> R.color.amanecer_text
-        "caribe" -> R.color.caribe_text
-        "noche" -> R.color.oscuro_text
-        else -> R.color.amanecer_text
-    }
-    tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
-
-    // Modo noche para la tortuga
-    val isNight = themeKey == "noche"
-    turtleWidget.setNightMode(isNight)
 }
 
     override fun onDestroy() {
