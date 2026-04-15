@@ -239,7 +239,7 @@ class ReaderActivity : AppCompatActivity() {
                 titleToIndexMap[cleanHtmlTitle(title)] = index
             }
             // Cargar índice jerárquico
-            hierarchicalChapters = epubParser.getHierarchicalChapters(uri).map { ChapterNode(it.title, it.src, it.children) }
+            hierarchicalChapters = epubParser.getHierarchicalChapters(uri).toMutableList()
             if (hierarchicalChapters.isNotEmpty()) {
                 // No necesitamos flattenNodes si usamos el mapa
             }

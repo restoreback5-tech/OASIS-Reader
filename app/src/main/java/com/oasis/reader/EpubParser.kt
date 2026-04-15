@@ -15,12 +15,6 @@ class EpubParser(private val contentResolver: ContentResolver) {
         val chapterContents: List<List<String>>
     )
 
-    data class ChapterNode(
-        val title: String,
-        val src: String,
-        val children: List<ChapterNode> = emptyList()
-    )
-
     /**
      * Extrae la estructura jerárquica del NCX (Índice)
      */
