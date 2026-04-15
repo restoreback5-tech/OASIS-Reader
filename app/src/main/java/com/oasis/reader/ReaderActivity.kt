@@ -588,7 +588,88 @@ class ReaderActivity : AppCompatActivity() {
         indicators[themeKey]?.visibility = View.VISIBLE
     }
 
-    private fun decodeHtmlEntities(text: String): String {
+    private fun applyTheme(themeKey: String) {
+        val gradient = when (themeKey) {
+            "noche" -> {
+                // Midnight Premium: Profundo y serio
+                GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(
+                        Color.parseColor("#121212"), 
+                        Color.parseColor("#1E1E1E")
+                    )
+                )
+            }
+            "caribe" -> {
+                // Deep Ocean: Sofisticado y fresco
+                GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(
+                        Color.parseColor("#0F2027"), 
+                        Color.parseColor("#203A43")
+                    )
+                )
+            }
+            else -> {
+                // Warm Paper: Cálido y natural (Default/Amanecer)
+                GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(
+                        Color.parseColor("#FDFBF7"), 
+                        Color.parseColor("#F5F0E6")
+                    )
+                )
+            }
+        }
+
+        // Aplicar fondo general
+        drawerLayout.background = gradient
+        window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#000000")
+        window.decorView.setBackgroundColor(Color.TRANSPARENT) // Dejar que el gradient se vea
+
+        // Definir paleta de textos y acentos
+        val (textMain, textValues, accentColor) = when (themeKey) {
+            "noche" -> Triple(
+                Color.parseColor("#E0E0E0"), // Texto principal suave
+                Color.parseColor("#A0A0A0"), // Valores secundarios
+                Color.parseColor("#64B5F6")  // Azul Acero brillante
+            )
+            "caribe" -> Triple(
+                Color.parseColor("#F0F8FF"), // Blanco hielo
+                Color.parseColor("#B0E0E6"), // Azul pálido
+                Color.parseColor("#4DD0E1")  // Cian vibrante
+            )
+            else -> Triple( // Amanecer / Default
+                Color.parseColor("#2C2C2C"), // Gris carbón
+                Color.parseColor("#5D4037"), // Marrón tierra
+                Color.parseColor("#FFB74D")  // Ámbar cálido
+            )
+        }
+
+        // Aplicar colores a textos
+        tvBookContent.setTextColor(textMain)
+        speedValueText.setTextColor(textValues)
+        pitchValueText.setTextColor(textValues)
+
+        // Aplicar acentos a SeekBars
+        val accentStateList = ColorStateList.valueOf(accentColor)
+        seekSpeed.progressTintList = accentStateList
+        seekSpeed.thumbTintList = accentStateList
+        
+        seekPitch.progressTintList = accentStateList
+        seekPitch.thumbTintList = accentStateList
+        
+        seekBrightness.progressTintList = accentStateList
+        seekBrightness.thumbTintList = accentStateList
+        
+        seekTextSize.progressTintList = accentStateList
+        seekTextSize.thumbTintList = accentStateList
+
+        // Configurar widget tortuga
+        turtleWidget.setNightMode(themeKey != "amanecer")
+    }
+
+        private fun decodeHtmlEntities(text: String): Str>
     var result = text
     result = result.replace("&nbsp;", " ")
     result = result.replace("&amp;", "&")
@@ -600,70 +681,10 @@ class ReaderActivity : AppCompatActivity() {
 }
 
     private fun cleanHtmlTitle(html: String): String {
-    val withoutTags = html.replace(Regex("<[^>]*>"), "")
+    val withoutTags = html.replace(Regex("<[^>]*>"), >
     val decoded = decodeHtmlEntities(withoutTags)
     return decoded.trim().let {
-        if (it.isBlank() || it.length < 2) "Sección" else it
-    }
-}
-
-    private fun applyTheme(themeKey: String) {
-    when (themeKey) {
-        "noche" -> {
-            val gradient = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.parseColor("#252525"), Color.parseColor("#545454"))
-            )
-            drawerLayout.background = gradient
-            window.statusBarColor = Color.parseColor("#252525")
-            window.decorView.setBackgroundColor(Color.parseColor("#252525"))
-
-            val textoPrincipal = Color.parseColor("#F4FCFB")
-            val textoValores = Color.parseColor("#ACBCBF")
-            val acento = Color.parseColor("#698696")
-
-            tvBookContent.setTextColor(textoPrincipal)
-            speedValueText.setTextColor(textoValores)
-            pitchValueText.setTextColor(textoValores)
-
-            seekSpeed.progressTintList = ColorStateList.valueOf(acento)
-            seekPitch.progressTintList = ColorStateList.valueOf(acento)
-            seekBrightness.progressTintList = ColorStateList.valueOf(acento)
-            seekTextSize.progressTintList = ColorStateList.valueOf(acento)
-
-            turtleWidget.setNightMode(true)
-        }
-        "caribe" -> {
-            // Nuevos colores basados en Arctic reflection para mejor contraste
-            val fondo = Color.parseColor("#243C4C")
-            drawerLayout.setBackgroundColor(fondo)
-            window.statusBarColor = fondo
-            window.decorView.setBackgroundColor(fondo)
-
-            val textoPrincipal = Color.parseColor("#F4FCFB")
-            val textoValores = Color.parseColor("#ACBCBF")
-            val acento = Color.parseColor("#698696")
-
-            tvBookContent.setTextColor(textoPrincipal)
-            speedValueText.setTextColor(textoValores)
-            pitchValueText.setTextColor(textoValores)
-
-            seekSpeed.progressTintList = ColorStateList.valueOf(acento)
-            seekPitch.progressTintList = ColorStateList.valueOf(acento)
-            seekBrightness.progressTintList = ColorStateList.valueOf(acento)
-            seekTextSize.progressTintList = ColorStateList.valueOf(acento)
-
-            turtleWidget.setNightMode(false)
-        }
-        else -> {
-            val bgRes = R.color.amanecer_background
-            window.decorView.setBackgroundColor(ContextCompat.getColor(this, bgRes))
-            drawerLayout.setBackgroundColor(ContextCompat.getColor(this, bgRes))
-            window.statusBarColor = ContextCompat.getColor(this, bgRes)
-            val textColorRes = R.color.amanecer_text
-            tvBookContent.setTextColor(ContextCompat.getColor(this, textColorRes))
-            turtleWidget.setNightMode(false)
-        }
+        if (it.isBlank() || it.length < 2) "Sección" >
     }
 }
 

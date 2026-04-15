@@ -26,11 +26,10 @@
                 android:paddingBottom="24dp"
                 android:paddingTop="72dp"
                 android:textSize="16sp"
-                android:lineSpacingExtra="4dp"
-                android:textColor="@android:color/black" />
+                android:lineSpacingExtra="4dp" />
         </ScrollView>
 
-        <!-- Botón para abrir el panel lateral (invisible pero funcional) -->
+        <!-- Botón para abrir el panel lateral -->
         <ImageButton
             android:id="@+id/btn_open_drawer"
             android:layout_width="48dp"
@@ -38,20 +37,18 @@
             android:layout_margin="16dp"
             android:src="@android:drawable/ic_menu_sort_by_size"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:tint="#000000"
-            android:alpha="0" />
+            android:alpha="0.5" />
     </FrameLayout>
 
     <!-- Panel lateral (drawer) -->
     <LinearLayout
+        android:id="@+id/drawer_content_container"
         android:layout_width="300dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:orientation="vertical"
-        android:padding="16dp"
-        android:background="#2C2C2C">
-
-        <!-- Selector de temas (Sol, Luna, Nubes) -->
+        android:padding="16dp">
+        <!-- Selector de temas -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -71,10 +68,11 @@
                 android:background="?attr/selectableItemBackgroundBorderless">
 
                 <ImageView
+                    android:id="@+id/icon_sol"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:src="@drawable/ic_sol"
-                    android:contentDescription="Sol" />
+                    android:contentDescription="Tema Sol" />
 
                 <ImageView
                     android:id="@+id/indicator_sol"
@@ -97,10 +95,10 @@
                 android:background="?attr/selectableItemBackgroundBorderless">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:id="@+id/icon_luna"
+                    android:layout_width="48dp"                    android:layout_height="48dp"
                     android:src="@drawable/ic_luna"
-                    android:contentDescription="Luna" />
+                    android:contentDescription="Tema Luna" />
 
                 <ImageView
                     android:id="@+id/indicator_luna"
@@ -123,10 +121,11 @@
                 android:background="?attr/selectableItemBackgroundBorderless">
 
                 <ImageView
+                    android:id="@+id/icon_nubes"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:src="@drawable/ic_nubes"
-                    android:contentDescription="Nubes" />
+                    android:contentDescription="Tema Nubes" />
 
                 <ImageView
                     android:id="@+id/indicator_nubes"
@@ -139,28 +138,24 @@
         </LinearLayout>
 
         <View
+            android:id="@+id/divider_top"
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:layout_marginVertical="16dp"
-            android:background="#4A4A4A" />
+            android:layout_marginVertical="16dp" />
 
         <!-- Velocidad de voz -->
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/label_speed"            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Velocidad de voz"
-            android:textSize="16sp"
-            android:textColor="#E0E0E0" />
+            android:textSize="16sp" />
 
         <SeekBar
             android:id="@+id/seekbar_tts_speed"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:max="100"
-            android:progress="50"
-            android:progressTint="#C0C0C0"
-            android:thumbTint="#C0C0C0"
-            android:progressBackgroundTint="#4A4A4A" />
+            android:progress="50" />
 
         <TextView
             android:id="@+id/text_tts_speed_value"
@@ -168,27 +163,23 @@
             android:layout_height="wrap_content"
             android:text="Normal"
             android:textSize="12sp"
-            android:textColor="#A0B0C0"
             android:gravity="center" />
 
         <!-- Tono de voz -->
         <TextView
+            android:id="@+id/label_pitch"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="Tono de voz"
-            android:textSize="16sp"
-            android:textColor="#E0E0E0" />
+            android:textSize="16sp" />
 
         <SeekBar
             android:id="@+id/seekbar_tts_pitch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:max="100"
-            android:progress="50"
-            android:progressTint="#C0C0C0"
-            android:thumbTint="#C0C0C0"
-            android:progressBackgroundTint="#4A4A4A" />
+            android:progress="50" />
 
         <TextView
             android:id="@+id/text_tts_pitch_value"
@@ -196,52 +187,44 @@
             android:layout_height="wrap_content"
             android:text="Normal"
             android:textSize="12sp"
-            android:textColor="#A0B0C0"
             android:gravity="center" />
 
         <!-- Brillo -->
         <TextView
+            android:id="@+id/label_brightness"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Brillo"
-            android:textSize="16sp"
-            android:textColor="#E0E0E0" />
+            android:layout_marginTop="16dp"            android:text="Brillo"
+            android:textSize="16sp" />
 
         <SeekBar
             android:id="@+id/seekbar_brightness"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:max="100"
-            android:progress="100"
-            android:progressTint="#C0C0C0"
-            android:thumbTint="#C0C0C0"
-            android:progressBackgroundTint="#4A4A4A" />
+            android:progress="100" />
 
         <!-- Tamaño de texto -->
         <TextView
+            android:id="@+id/label_text_size"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="Tamaño de texto"
-            android:textSize="16sp"
-            android:textColor="#E0E0E0" />
+            android:textSize="16sp" />
 
         <SeekBar
             android:id="@+id/seekbar_text_size"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:max="100"
-            android:progress="100"
-            android:progressTint="#C0C0C0"
-            android:thumbTint="#C0C0C0"
-            android:progressBackgroundTint="#4A4A4A" />
+            android:progress="100" />
 
         <View
+            android:id="@+id/divider_bottom"
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:layout_marginVertical="16dp"
-            android:background="#4A4A4A" />
+            android:layout_marginVertical="16dp" />
 
         <!-- Botones Play, Capítulos y Libro -->
         <LinearLayout
@@ -257,17 +240,14 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:src="@android:drawable/ic_media_play"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:tint="#4A6A8A" />
+                android:background="?attr/selectableItemBackgroundBorderless" />
 
             <ImageButton
-                android:id="@+id/btn_chapters"
-                android:layout_width="0dp"
+                android:id="@+id/btn_chapters"                android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:src="@android:drawable/ic_menu_sort_by_size"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:tint="#4A6A8A" />
+                android:background="?attr/selectableItemBackgroundBorderless" />
 
             <ImageButton
                 android:id="@+id/btn_book"
@@ -275,8 +255,7 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:src="@android:drawable/ic_menu_edit"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:tint="#4A6A8A" />
+                android:background="?attr/selectableItemBackgroundBorderless" />
         </LinearLayout>
 
         <!-- Tortuga -->
