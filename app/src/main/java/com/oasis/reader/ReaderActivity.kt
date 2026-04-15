@@ -231,15 +231,15 @@ class ReaderActivity : AppCompatActivity() {
                 Toast.makeText(this, "No se encontraron capítulos en el EPUB", Toast.LENGTH_LONG).show()
                 return
             }
-            chapterTitles = parsed.chapterTitles
-            chapterContents = parsed.chapterContents
+            chapterTitles = parsed.chapterTitles.toMutableList()
+            chapterContents = parsed.chapterContents.toMutableList()
             // Construir mapa de título limpio a índice
             titleToIndexMap.clear()
             chapterTitles.forEachIndexed { index, title ->
                 titleToIndexMap[cleanHtmlTitle(title)] = index
             }
             // Cargar índice jerárquico
-            hierarchicalChapters = epubParser.getHierarchicalChapters(uri)
+            hierarchicalChapters = epubParser.getHierarchicalChapters(uri).map { ChapterNode(it.title, it.src, it.children) }
             if (hierarchicalChapters.isNotEmpty()) {
                 // No necesitamos flattenNodes si usamos el mapa
             }

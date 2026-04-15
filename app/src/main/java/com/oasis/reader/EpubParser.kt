@@ -145,7 +145,8 @@ class EpubParser(private val contentResolver: ContentResolver) {
                     }
                     XmlPullParser.END_TAG -> {
                         if (parser.name == "navPoint") {
-                            val children = stack.removeLast()                            val newNode = ChapterNode(currentTitle, currentSrc, children)
+                            val children = stack.removeLast()                            
+                            val newNode = ChapterNode(currentTitle, currentSrc, children)
                             
                             // Añadir al padre
                             if (stack.isNotEmpty()) {
@@ -300,7 +301,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
 
     private fun extractTitleFromHtml(html: String): String? {
         // Buscar h1, luego h2, etc.
-        val headerRegex = Regex("""<h([1-6])[^>]*>(.*?)</h\1>""", RegexOption.IGNORE_CASE or RegexOption.DOT_MATCHES_ALL)
+        val headerRegex = Regex("""<h([1-6])[^>]*>(.*?)</h\1>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
         val match = headerRegex.find(html)
         return match?.groupValues?.get(2)?.let { htmlToPlainText(it) }?.takeIf { it.isNotBlank() }
     }
@@ -341,7 +342,8 @@ class EpubParser(private val contentResolver: ContentResolver) {
                         when (parser.name) {
                             "item" -> {
                                 val id = parser.getAttributeValue(null, "id")
-                                val href = parser.getAttributeValue(null, "href")                                val mediaType = parser.getAttributeValue(null, "media-type")
+                                val href = parser.getAttributeValue(null, "href")                                
+                                val mediaType = parser.getAttributeValue(null, "media-type")
                                 
                                 if (href != null) {
                                     val fullHref = if (opfDir.isNotEmpty()) "$opfDir/$href" else href
