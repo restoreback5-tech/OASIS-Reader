@@ -665,11 +665,11 @@ class ReaderActivity : AppCompatActivity() {
         seekTextSize.progressTintList = accentStateList
         seekTextSize.thumbTintList = accentStateList
 
-        // Configurar widget tortuga
+        // Configu,rar widget tortuga
         turtleWidget.setNightMode(themeKey != "amanecer")
     }
 
-        private fun decodeHtmlEntities(text: String): Str>
+        private fun decodeHtmlEntities(text: String): String {
     var result = text
     result = result.replace("&nbsp;", " ")
     result = result.replace("&amp;", "&")
@@ -680,11 +680,11 @@ class ReaderActivity : AppCompatActivity() {
     return result
 }
 
-    private fun cleanHtmlTitle(html: String): String {
-    val withoutTags = html.replace(Regex("<[^>]*>"), >
+private fun cleanHtmlTitle(html: String): String {
+    val withoutTags = html.replace(Regex("<[^>]*>"), "")
     val decoded = decodeHtmlEntities(withoutTags)
     return decoded.trim().let {
-        if (it.isBlank() || it.length < 2) "Sección" >
+        if (it.isBlank() || it.length < 2) "Sección" else it
     }
 }
 
