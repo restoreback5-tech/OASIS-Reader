@@ -460,7 +460,6 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun applyTheme(themeKey: String) {
-    // Fondo de la pantalla principal
     val solidColor = when (themeKey) {
         "noche" -> Color.parseColor("#1E1E1E")
         "caribe" -> Color.parseColor("#2A4A5A")
@@ -469,19 +468,22 @@ class ReaderActivity : AppCompatActivity() {
     window.decorView.setBackgroundColor(solidColor)
     window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#1E1E1E")
 
-    // Fondo del drawer (mismo color sólido)
-    drawerLayout.setBackgroundColor(solidColor)
+    val drawerBg = when (themeKey) {
+        "noche" -> Color.parseColor("#2C2C2C")
+        "caribe" -> Color.parseColor("#3A5A6A")
+        else -> Color.parseColor("#F0F0F0")
+    }
+    drawerLayout.setBackgroundColor(drawerBg)
 
-    // Colores de texto según tema
     val (textMain, textSecondary, accentColor) = when (themeKey) {
         "noche" -> Triple(
             Color.parseColor("#FFFFFF"),
-            Color.parseColor("#B0B0B0"),
+            Color.parseColor("#D0D0D0"),
             Color.parseColor("#64B5F6")
         )
         "caribe" -> Triple(
             Color.parseColor("#FFFFFF"),
-            Color.parseColor("#D0E0E8"),
+            Color.parseColor("#E0E0E0"),
             Color.parseColor("#4DD0E1")
         )
         else -> Triple(
@@ -491,7 +493,6 @@ class ReaderActivity : AppCompatActivity() {
         )
     }
 
-    // Aplicar colores a todos los TextView del drawer (recursivo)
     fun setDrawerTextColors(view: View) {
         when (view) {
             is TextView -> {
@@ -510,11 +511,6 @@ class ReaderActivity : AppCompatActivity() {
     }
     setDrawerTextColors(drawerLayout)
 
-    // Valores específicos (ya cubiertos por el recursivo, pero aseguramos)
-    speedValueText.setTextColor(textSecondary)
-    pitchValueText.setTextColor(textSecondary)
-
-    // Sliders
     val accentStateList = ColorStateList.valueOf(accentColor)
     seekSpeed.progressTintList = accentStateList
     seekSpeed.thumbTintList = accentStateList
@@ -525,12 +521,9 @@ class ReaderActivity : AppCompatActivity() {
     seekTextSize.progressTintList = accentStateList
     seekTextSize.thumbTintList = accentStateList
 
-    // Color del texto del libro
     tvBookContent.setTextColor(textMain)
-
-    // Tortuga
     turtleWidget.setNightMode(themeKey != "amanecer")
-}
+}	
 
     private fun decodeHtmlEntities(text: String): String {
         var result = text
