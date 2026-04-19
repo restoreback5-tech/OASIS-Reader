@@ -460,39 +460,43 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun applyTheme(themeKey: String) {
-    val solidColor = when (themeKey) {
-        "noche" -> Color.parseColor("#1E1E1E")
-        "caribe" -> Color.parseColor("#2A4A5A")
-        else -> Color.parseColor("#FAFAFA")
+    // Fondo de la pantalla principal (sigue igual)
+    val mainBg = when (themeKey) {
+        "noche" -> Color.parseColor("#1E1E1E")      // gris oscuro
+        "caribe" -> Color.parseColor("#2A4A5A")     // azul marino
+        else -> Color.parseColor("#FAFAFA")         // gris muy claro
     }
-    window.decorView.setBackgroundColor(solidColor)
+    window.decorView.setBackgroundColor(mainBg)
     window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#1E1E1E")
 
+    // Colores exclusivos para la ventana de ajustes (drawer)
     val drawerBg = when (themeKey) {
-        "noche" -> Color.parseColor("#2C2C2C")
-        "caribe" -> Color.parseColor("#3A5A6A")
-        else -> Color.parseColor("#F0F0F0")
+        "noche" -> Color.parseColor("#2C2C2C")      // gris grafito (no negro)
+        "caribe" -> Color.parseColor("#4A7A8A")     // azul cielo/nubes
+        else -> Color.parseColor("#FFFFFF")         // blanco puro
     }
     drawerLayout.setBackgroundColor(drawerBg)
 
+    // Textos para el drawer (contraste garantizado)
     val (textMain, textSecondary, accentColor) = when (themeKey) {
         "noche" -> Triple(
-            Color.parseColor("#FFFFFF"),
-            Color.parseColor("#D0D0D0"),
-            Color.parseColor("#64B5F6")
+            Color.parseColor("#FFFFFF"),   // blanco
+            Color.parseColor("#C0C0C0"),   // gris plata
+            Color.parseColor("#64B5F6")    // azul acero
         )
         "caribe" -> Triple(
-            Color.parseColor("#FFFFFF"),
-            Color.parseColor("#E0E0E0"),
-            Color.parseColor("#4DD0E1")
+            Color.parseColor("#FFFFFF"),   // blanco
+            Color.parseColor("#D0E0E8"),   // azul pálido
+            Color.parseColor("#4DD0E1")    // turquesa
         )
         else -> Triple(
-            Color.parseColor("#2C2C2C"),
-            Color.parseColor("#5D4037"),
-            Color.parseColor("#FFB74D")
+            Color.parseColor("#2C2C2C"),   // gris oscuro
+            Color.parseColor("#5D4037"),   // marrón
+            Color.parseColor("#FFB74D")    // ámbar
         )
     }
 
+    // Aplicar colores a todos los TextView del drawer (recursivo)
     fun setDrawerTextColors(view: View) {
         when (view) {
             is TextView -> {
@@ -511,6 +515,7 @@ class ReaderActivity : AppCompatActivity() {
     }
     setDrawerTextColors(drawerLayout)
 
+    // Sliders
     val accentStateList = ColorStateList.valueOf(accentColor)
     seekSpeed.progressTintList = accentStateList
     seekSpeed.thumbTintList = accentStateList
@@ -521,9 +526,12 @@ class ReaderActivity : AppCompatActivity() {
     seekTextSize.progressTintList = accentStateList
     seekTextSize.thumbTintList = accentStateList
 
+    // Texto del libro
     tvBookContent.setTextColor(textMain)
+
+    // Tortuga
     turtleWidget.setNightMode(themeKey != "amanecer")
-}	
+}
 
     private fun decodeHtmlEntities(text: String): String {
         var result = text
