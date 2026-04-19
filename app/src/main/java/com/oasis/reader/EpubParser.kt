@@ -173,6 +173,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
     private fun htmlToPlainText(html: String): String {
         val withoutTags = html.replace(Regex("<[^>]*>"), " ")
         val decoded = decodeHtmlEntities(withoutTags)
+        decoded = decoded.replace(Regex("(\\d)([A-ZÁÉÍÓÚÜÑ])"), "$1 $2")
         return decoded.replace(Regex("\\s+"), " ").trim()
     }
 

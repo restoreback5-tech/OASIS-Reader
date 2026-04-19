@@ -459,80 +459,48 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun applyTheme(themeKey: String) {
-        val gradient = when (themeKey) {
-            "noche" -> {
-                GradientDrawable(
-                    GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(
-                        Color.parseColor("#121212"),
-                        Color.parseColor("#1E1E1E")
-                    )
-                )
-            }
-            "caribe" -> {
-                GradientDrawable(
-                    GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(
-                        Color.parseColor("#0F2027"),
-                        Color.parseColor("#203A43")
-                    )
-                )
-            }
-            else -> {
-                GradientDrawable(
-                    GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(
-                        Color.parseColor("#FDFBF7"),
-                        Color.parseColor("#F5F0E6")
-                    )
-                )
-            }
-        }
-
-        drawerLayout.background = gradient
-        window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#000000")
-        // Fondo sólido para toda la pantalla, según el tema
     val solidColor = when (themeKey) {
-    "noche" -> Color.parseColor("#121212")
-    "caribe" -> Color.parseColor("#0F2027")
-    else -> Color.parseColor("#FDFBF7")
-}
-    window.decorView.setBackgroundColor(solidColor)
-
-        val (textMain, textValues, accentColor) = when (themeKey) {
-            "noche" -> Triple(
-                Color.parseColor("#E0E0E0"),
-                Color.parseColor("#A0A0A0"),
-                Color.parseColor("#64B5F6")
-            )
-            "caribe" -> Triple(
-                Color.parseColor("#F0F8FF"),
-                Color.parseColor("#B0E0E6"),
-                Color.parseColor("#4DD0E1")
-            )
-            else -> Triple(
-                Color.parseColor("#2C2C2C"),
-                Color.parseColor("#5D4037"),
-                Color.parseColor("#FFB74D")
-            )
-        }
-
-        tvBookContent.setTextColor(textMain)
-        speedValueText.setTextColor(textValues)
-        pitchValueText.setTextColor(textValues)
-
-        val accentStateList = ColorStateList.valueOf(accentColor)
-        seekSpeed.progressTintList = accentStateList
-        seekSpeed.thumbTintList = accentStateList
-        seekPitch.progressTintList = accentStateList
-        seekPitch.thumbTintList = accentStateList
-        seekBrightness.progressTintList = accentStateList
-        seekBrightness.thumbTintList = accentStateList
-        seekTextSize.progressTintList = accentStateList
-        seekTextSize.thumbTintList = accentStateList
-
-        turtleWidget.setNightMode(themeKey != "amanecer")
+        "noche" -> Color.parseColor("#121212")
+        "caribe" -> Color.parseColor("#0F2027")
+        else -> Color.parseColor("#FDFBF7")
     }
+    window.decorView.setBackgroundColor(solidColor)
+    window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#000000")
+
+    val (textMain, textValues, accentColor) = when (themeKey) {
+        "noche" -> Triple(
+            Color.parseColor("#FFFFFF"),
+            Color.parseColor("#E0E0E0"),
+            Color.parseColor("#64B5F6")
+        )
+        "caribe" -> Triple(
+            Color.parseColor("#FFFFFF"),
+            Color.parseColor("#D0E0E8"),
+            Color.parseColor("#4DD0E1")
+        )
+        else -> Triple(
+            Color.parseColor("#FFFFFF"),
+            Color.parseColor("#E0E0E0"),
+            Color.parseColor("#FFB74D")
+        )
+    }
+
+    tvBookContent.setTextColor(textMain)
+    speedValueText.setTextColor(textValues)
+    pitchValueText.setTextColor(textValues)
+
+    val accentStateList = ColorStateList.valueOf(accentColor)
+    seekSpeed.progressTintList = accentStateList
+    seekSpeed.thumbTintList = accentStateList
+    seekPitch.progressTintList = accentStateList
+    seekPitch.thumbTintList = accentStateList
+    seekBrightness.progressTintList = accentStateList
+    seekBrightness.thumbTintList = accentStateList
+    seekTextSize.progressTintList = accentStateList
+    seekTextSize.thumbTintList = accentStateList
+
+    turtleWidget.setNightMode(themeKey != "amanecer")
+}
 
     private fun decodeHtmlEntities(text: String): String {
         var result = text
