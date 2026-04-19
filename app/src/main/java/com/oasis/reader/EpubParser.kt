@@ -151,7 +151,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
 
     private fun cleanHtmlTitle(html: String): String {
         val withoutTags = html.replace(Regex("<[^>]*>"), "")
-        val decoded = decodeHtmlEntities(withoutTags)
+        var decoded = decodeHtmlEntities(withoutTags)
         return decoded.trim().let {
             if (it.isBlank() || it.length < 2) "Capítulo" else it
         }
