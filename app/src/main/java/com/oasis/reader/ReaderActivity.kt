@@ -47,7 +47,8 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var themeNubes: View
     private lateinit var indicatorSol: ImageView
     private lateinit var indicatorLuna: ImageView
-    private lateinit var indicatorNubes: ImageView    private lateinit var turtleWidget: TurtleView
+    private lateinit var indicatorNubes: ImageView
+    private lateinit var turtleWidget: TurtleView
 
     // Swipe
     private lateinit var gestureDetector: GestureDetector
@@ -96,7 +97,8 @@ class ReaderActivity : AppCompatActivity() {
         setupThemes()
 
         btnOpenDrawer.setOnClickListener {
-            sound.play(R.raw.touch)            drawerLayout.openDrawer(GravityCompat.START)
+            sound.play(R.raw.touch)
+            drawerLayout.openDrawer(GravityCompat.START)
         }
 
         findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
@@ -145,7 +147,8 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun handleSwipe() {
-        val swipeThreshold = 100        val diff = touchStartX - touchEndX
+        val swipeThreshold = 100
+        val diff = touchStartX - touchEndX
         if (abs(diff) > swipeThreshold) {
             if (diff > 0) {
                 nextParagraph()
@@ -194,7 +197,8 @@ class ReaderActivity : AppCompatActivity() {
         if (requestCode == REQUEST_CODE_OPEN_DOCUMENT && resultCode == RESULT_OK) {
             data?.data?.let { uri ->
                 try {
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)                } catch (e: SecurityException) {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (e: SecurityException) {
                     e.printStackTrace()
                 }
                 sound.play(R.raw.confirmar)
@@ -243,7 +247,7 @@ class ReaderActivity : AppCompatActivity() {
             
             val spannable = SpannableString("$title\n$paragraphText")
             spannable.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        tvBookContent.text = spannable
+            tvBookContent.text = spannable
             scrollText.scrollTo(0, 0)
         }
     }
@@ -292,7 +296,8 @@ class ReaderActivity : AppCompatActivity() {
         
         for (sentence in sentences) {
             if (currentChunk.length + sentence.length + 1 > maxLength) {
-                if (currentChunk.isNotEmpty()) {                    chunks.add(currentChunk.toString().trim())
+                if (currentChunk.isNotEmpty()) {
+                    chunks.add(currentChunk.toString().trim())
                     currentChunk.clear()
                 }
                 if (sentence.length > maxLength) {
@@ -341,7 +346,8 @@ class ReaderActivity : AppCompatActivity() {
         }
 
         val text = paragraphs[currentParagraphIndex]
-        val chunks = splitTextForTts(text)        var chunkIndex = 0
+        val chunks = splitTextForTts(text)
+        var chunkIndex = 0
 
         fun speakNextChunk() {
             if (!isPlaying) return
@@ -390,7 +396,8 @@ class ReaderActivity : AppCompatActivity() {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
                     sound.play(R.raw.deslizar)
-                    val pitch = 0.5f + (progress / 100f) * 1.0f                    pitchValueText.text = String.format("%.1fx", pitch)
+                    val pitch = 0.5f + (progress / 100f) * 1.0f
+                    pitchValueText.text = String.format("%.1fx", pitch)
                     prefs.edit().putFloat("voice_pitch", pitch).apply()
                     tts.updateSpeechSettings()
                 }
@@ -439,7 +446,8 @@ class ReaderActivity : AppCompatActivity() {
         applyTheme(currentTheme)
     }
 
-    private fun changeTheme(themeKey: String, themes: Map<String, View>, indicators: Map<String, ImageView>) {        sound.play(R.raw.check_on)
+    private fun changeTheme(themeKey: String, themes: Map<String, View>, indicators: Map<String, ImageView>) {
+        sound.play(R.raw.check_on)
         prefs.edit().putString("selected_theme", themeKey).apply()
         updateThemeUI(themeKey, indicators)
         applyTheme(themeKey)
@@ -448,9 +456,9 @@ class ReaderActivity : AppCompatActivity() {
     private fun updateThemeUI(themeKey: String, indicators: Map<String, ImageView>) {
         indicators.values.forEach { it.visibility = View.GONE }
         indicators[themeKey]?.visibility = View.VISIBLE
-   }
+    }
 
-      private fun applyTheme(themeKey: String) {
+    private fun applyTheme(themeKey: String) {
         val gradient = when (themeKey) {
             "noche" -> {
                 GradientDrawable(
