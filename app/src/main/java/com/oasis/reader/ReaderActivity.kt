@@ -491,7 +491,13 @@ class ReaderActivity : AppCompatActivity() {
 
         drawerLayout.background = gradient
         window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#000000")
-        window.decorView.setBackgroundColor(Color.TRANSPARENT)
+        // Fondo sólido para toda la pantalla, según el tema
+    val solidColor = when (themeKey) {
+    "noche" -> Color.parseColor("#121212")
+    "caribe" -> Color.parseColor("#0F2027")
+    else -> Color.parseColor("#FDFBF7")
+}
+    window.decorView.setBackgroundColor(solidColor)
 
         val (textMain, textValues, accentColor) = when (themeKey) {
             "noche" -> Triple(
