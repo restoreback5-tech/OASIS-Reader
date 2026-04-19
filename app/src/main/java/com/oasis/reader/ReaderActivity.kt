@@ -459,18 +459,23 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun applyTheme(themeKey: String) {
+    // Fondo sólido para la pantalla principal
     val solidColor = when (themeKey) {
-        "noche" -> Color.parseColor("#121212")
-        "caribe" -> Color.parseColor("#0F2027")
-        else -> Color.parseColor("#FDFBF7")
+        "noche" -> Color.parseColor("#2C2C2C")      // Gris oscuro, no negro
+        "caribe" -> Color.parseColor("#1E3A4A")     // Azul marino profundo
+        else -> Color.parseColor("#FFF8E7")         // Beige claro
     }
     window.decorView.setBackgroundColor(solidColor)
-    window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#000000")
+    window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#1E1E1E")
 
+    // Fondo del drawer (mismo color sólido para consistencia)
+    drawerLayout.setBackgroundColor(solidColor)
+
+    // Colores de texto con alto contraste
     val (textMain, textValues, accentColor) = when (themeKey) {
         "noche" -> Triple(
-            Color.parseColor("#FFFFFF"),
-            Color.parseColor("#E0E0E0"),
+            Color.parseColor("#FFFFFF"),   // Blanco puro
+            Color.parseColor("#E0E0E0"),   // Gris claro
             Color.parseColor("#64B5F6")
         )
         "caribe" -> Triple(
@@ -479,8 +484,8 @@ class ReaderActivity : AppCompatActivity() {
             Color.parseColor("#4DD0E1")
         )
         else -> Triple(
-            Color.parseColor("#FFFFFF"),
-            Color.parseColor("#E0E0E0"),
+            Color.parseColor("#2C2C2C"),    // Gris oscuro
+            Color.parseColor("#5D4037"),    // Marrón
             Color.parseColor("#FFB74D")
         )
     }
