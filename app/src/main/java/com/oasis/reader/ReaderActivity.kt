@@ -24,7 +24,6 @@ import com.oasis.turtle.TurtleView
 import kotlin.math.abs
 
 class ReaderActivity : AppCompatActivity() {
-
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var scrollText: ScrollView
     private lateinit var tvBookContent: TextView
@@ -48,8 +47,7 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var themeNubes: View
     private lateinit var indicatorSol: ImageView
     private lateinit var indicatorLuna: ImageView
-    private lateinit var indicatorNubes: ImageView
-    private lateinit var turtleWidget: TurtleView
+    private lateinit var indicatorNubes: ImageView    private lateinit var turtleWidget: TurtleView
 
     // Swipe
     private lateinit var gestureDetector: GestureDetector
@@ -63,11 +61,6 @@ class ReaderActivity : AppCompatActivity() {
     private var currentParagraphIndex = 0
     private var isPlaying = false
     private var currentUri: Uri? = null
-
-    // Índice jerárquico
-    private var hierarchicalChapters: List<ChapterNode> = emptyList()
-    // Mapa de título limpio -> índice en la lista plana
-    private val titleToIndexMap = mutableMapOf<String, Int>()
 
     private lateinit var epubParser: EpubParser
 
@@ -84,7 +77,6 @@ class ReaderActivity : AppCompatActivity() {
         scrollText = findViewById(R.id.scroll_text)
         tvBookContent = findViewById(R.id.tv_book_content)
         btnOpenDrawer = findViewById(R.id.btn_open_drawer)
-
         seekSpeed = findViewById(R.id.seekbar_tts_speed)
         seekPitch = findViewById(R.id.seekbar_tts_pitch)
         seekBrightness = findViewById(R.id.seekbar_brightness)
@@ -104,8 +96,7 @@ class ReaderActivity : AppCompatActivity() {
         setupThemes()
 
         btnOpenDrawer.setOnClickListener {
-            sound.play(R.raw.touch)
-            drawerLayout.openDrawer(GravityCompat.START)
+            sound.play(R.raw.touch)            drawerLayout.openDrawer(GravityCompat.START)
         }
 
         findViewById<ImageButton>(R.id.btn_book).setOnClickListener {
@@ -154,8 +145,7 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun handleSwipe() {
-        val swipeThreshold = 100
-        val diff = touchStartX - touchEndX
+        val swipeThreshold = 100        val diff = touchStartX - touchEndX
         if (abs(diff) > swipeThreshold) {
             if (diff > 0) {
                 nextParagraph()
@@ -204,8 +194,7 @@ class ReaderActivity : AppCompatActivity() {
         if (requestCode == REQUEST_CODE_OPEN_DOCUMENT && resultCode == RESULT_OK) {
             data?.data?.let { uri ->
                 try {
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                } catch (e: SecurityException) {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)                } catch (e: SecurityException) {
                     e.printStackTrace()
                 }
                 sound.play(R.raw.confirmar)
@@ -233,19 +222,11 @@ class ReaderActivity : AppCompatActivity() {
             }
             chapterTitles = parsed.chapterTitles.toMutableList()
             chapterContents = parsed.chapterContents.toMutableList()
-            // Construir mapa de título limpio a índice
-            titleToIndexMap.clear()
-            chapterTitles.forEachIndexed { index, title ->
-                titleToIndexMap[cleanHtmlTitle(title)] = index
-            }
-            // Cargar índice jerárquico
-            hierarchicalChapters = epubParser.getHierarchicalChapters(uri).toMutableList()
-            if (hierarchicalChapters.isNotEmpty()) {
-                // No necesitamos flattenNodes si usamos el mapa
-            }
+
             currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
             currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
             if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
+            
             showCurrentContent()
             Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -259,9 +240,10 @@ class ReaderActivity : AppCompatActivity() {
             val title = chapterTitles[currentChapterIndex]
             val paragraphs = chapterContents[currentChapterIndex]
             val paragraphText = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
-            val spannable = SpannableString("$title\n\n$paragraphText")
+            
+            val spannable = SpannableString("$title\n$paragraphText")
             spannable.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            tvBookContent.text = spannable
+                        tvBookContent.text = spannable
             scrollText.scrollTo(0, 0)
         }
     }
@@ -271,132 +253,7 @@ class ReaderActivity : AppCompatActivity() {
             Toast.makeText(this, "No hay capítulos cargados", Toast.LENGTH_SHORT).show()
             return
         }
-        if (hierarchicalChapters.isNotEmpty()) {
-            showHierarchicalChapterDialog()
-        } else {
-            showFlatChapterDialog()
-        }
-    }
-
-    private fun showHierarchicalChapterDialog() {
-        val builder = AlertDialog.Builder(this)
-        builder.setTitle("Índice")
-        val expandableListView = ExpandableListView(this)
-        val groupList = ArrayList<Map<String, String>>()
-        val childList = ArrayList<ArrayList<Map<String, String>>>()
-        buildExpandableData(hierarchicalChapters, groupList, childList)
-        val adapter = SimpleExpandableListAdapter(
-            this,
-            groupList,
-            android.R.layout.simple_expandable_list_item_1,
-            arrayOf("title"),
-            intArrayOf(android.R.id.text1),
-            childList,
-            android.R.layout.simple_list_item_1,
-            arrayOf("title"),
-            intArrayOf(android.R.id.text1)
-        )
-        expandableListView.setAdapter(adapter)
-        builder.setView(expandableListView)
-        val dialog = builder.create()
-        expandableListView.setOnChildClickListener { _, _, groupPosition, childPosition, _ ->
-            val node = getNodeAtPosition(groupPosition, childPosition, hierarchicalChapters)
-            node?.let {
-                jumpToChapter(it)
-                dialog.dismiss()
-            }
-            true
-        }
-        expandableListView.setOnGroupClickListener { _, _, groupPosition, _ ->
-            val node = getNodeAtPosition(groupPosition, hierarchicalChapters)
-            if (node != null && node.children.isEmpty()) {
-                jumpToChapter(node)
-                dialog.dismiss()
-                return@setOnGroupClickListener true
-            }
-            false // permite expandir si tiene hijos
-        }
-        dialog.show()
-    }
-
-    private fun buildExpandableData(
-        nodes: List<ChapterNode>,
-        groupList: ArrayList<Map<String, String>>,
-        childList: ArrayList<ArrayList<Map<String, String>>>
-    ) {
-        for (node in nodes) {
-            val groupMap = HashMap<String, String>()
-            groupMap["title"] = cleanHtmlTitle(node.title)
-            groupList.add(groupMap)
-            val childrenArray = ArrayList<Map<String, String>>()
-            for (child in node.children) {
-                val childMap = HashMap<String, String>()
-                childMap["title"] = cleanHtmlTitle(child.title)
-                childrenArray.add(childMap)
-            }
-            childList.add(childrenArray)
-        }
-    }
-
-    private fun getNodeAtPosition(groupPosition: Int, childPosition: Int, nodes: List<ChapterNode>): ChapterNode? {
-        var currentGroup = 0
-        for (node in nodes) {
-            if (currentGroup == groupPosition) {
-                return if (childPosition >= 0 && childPosition < node.children.size) node.children[childPosition] else node
-            }
-            currentGroup++
-        }
-        return null
-    }
-
-    private fun getNodeAtPosition(groupPosition: Int, nodes: List<ChapterNode>): ChapterNode? {
-        var currentGroup = 0
-        for (node in nodes) {
-            if (currentGroup == groupPosition) return node
-            currentGroup++
-        }
-        return null
-    }
-
-    private fun jumpToChapter(node: ChapterNode) {
-        // Primero intentar con el título limpio del nodo
-        val cleanTitle = cleanHtmlTitle(node.title)
-        var index = titleToIndexMap[cleanTitle]
-        // Si no se encuentra, intentar búsqueda parcial (por si hay diferencias)
-        if (index == null) {
-            index = chapterTitles.indexOfFirst { cleanHtmlTitle(it).contains(cleanTitle, ignoreCase = true) }
-        }
-        // Si aún no se encuentra, usar el orden de aplanamiento (menos fiable)
-        if (index == null || index == -1) {
-            index = getFlatIndexForNode(node)
-        }
-        if (index != null && index in chapterTitles.indices && index != currentChapterIndex) {
-            sound.play(R.raw.page_flip)
-            currentChapterIndex = index
-            currentParagraphIndex = 0
-            tts.stop()
-            showCurrentContent()
-            saveProgress()
-        } else {
-            Toast.makeText(this, "No se pudo encontrar el capítulo: ${cleanTitle}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun getFlatIndexForNode(node: ChapterNode): Int? {
-        // Recorrer jerárquicamente y devolver el orden de aparición en profundidad
-        var counter = 0
-        fun dfs(nodes: List<ChapterNode>): Int? {
-            for (n in nodes) {
-                if (n === node) return counter
-                counter++
-                if (n.children.isNotEmpty()) {
-                    val found = dfs(n.children)
-                    if (found != null) return found
-                }
-            }
-            return null
-        }
-        return dfs(hierarchicalChapters)
+        showFlatChapterDialog()
     }
 
     private fun showFlatChapterDialog() {
@@ -432,10 +289,10 @@ class ReaderActivity : AppCompatActivity() {
         val sentences = text.split(Regex("(?<=[.!?])\\s+"))
         val chunks = mutableListOf<String>()
         val currentChunk = StringBuilder()
+        
         for (sentence in sentences) {
             if (currentChunk.length + sentence.length + 1 > maxLength) {
-                if (currentChunk.isNotEmpty()) {
-                    chunks.add(currentChunk.toString().trim())
+                if (currentChunk.isNotEmpty()) {                    chunks.add(currentChunk.toString().trim())
                     currentChunk.clear()
                 }
                 if (sentence.length > maxLength) {
@@ -466,6 +323,7 @@ class ReaderActivity : AppCompatActivity() {
             Toast.makeText(this, "Fin del libro", Toast.LENGTH_SHORT).show()
             return
         }
+
         val paragraphs = chapterContents[currentChapterIndex]
         if (currentParagraphIndex >= paragraphs.size) {
             sound.play(R.raw.page_flip)
@@ -481,9 +339,9 @@ class ReaderActivity : AppCompatActivity() {
             }
             return
         }
+
         val text = paragraphs[currentParagraphIndex]
-        val chunks = splitTextForTts(text)
-        var chunkIndex = 0
+        val chunks = splitTextForTts(text)        var chunkIndex = 0
 
         fun speakNextChunk() {
             if (!isPlaying) return
@@ -513,7 +371,7 @@ class ReaderActivity : AppCompatActivity() {
         prefs.edit().putInt("last_paragraph_index", currentParagraphIndex).apply()
     }
 
-                    private fun setupSliders() {
+    private fun setupSliders() {
         seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
@@ -527,12 +385,12 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
         seekPitch.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
                     sound.play(R.raw.deslizar)
-                    val pitch = 0.5f + (progress / 100f) * 1.0f
-                    pitchValueText.text = String.format("%.1fx", pitch)
+                    val pitch = 0.5f + (progress / 100f) * 1.0f                    pitchValueText.text = String.format("%.1fx", pitch)
                     prefs.edit().putFloat("voice_pitch", pitch).apply()
                     tts.updateSpeechSettings()
                 }
@@ -540,6 +398,7 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
         seekBrightness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) sound.play(R.raw.deslizar)
@@ -549,6 +408,7 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
         seekTextSize.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) sound.play(R.raw.deslizar)
@@ -557,6 +417,7 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
         val savedSpeed = prefs.getFloat("voice_speed", 1.0f)
         val savedPitch = prefs.getFloat("voice_pitch", 1.0f)
         seekSpeed.progress = ((savedSpeed - 0.5f) / 1.5f * 100).toInt().coerceIn(0, 100)
@@ -568,16 +429,17 @@ class ReaderActivity : AppCompatActivity() {
     private fun setupThemes() {
         val themes = mapOf("amanecer" to themeSol, "caribe" to themeNubes, "noche" to themeLuna)
         val indicators = mapOf("amanecer" to indicatorSol, "caribe" to indicatorNubes, "noche" to indicatorLuna)
+
         themeSol.setOnClickListener { changeTheme("amanecer", themes, indicators) }
         themeLuna.setOnClickListener { changeTheme("noche", themes, indicators) }
         themeNubes.setOnClickListener { changeTheme("caribe", themes, indicators) }
+
         val currentTheme = prefs.getString("selected_theme", "amanecer") ?: "amanecer"
         updateThemeUI(currentTheme, indicators)
         applyTheme(currentTheme)
     }
 
-    private fun changeTheme(themeKey: String, themes: Map<String, View>, indicators: Map<String, ImageView>) {
-        sound.play(R.raw.check_on)
+    private fun changeTheme(themeKey: String, themes: Map<String, View>, indicators: Map<String, ImageView>) {        sound.play(R.raw.check_on)
         prefs.edit().putString("selected_theme", themeKey).apply()
         updateThemeUI(themeKey, indicators)
         applyTheme(themeKey)
@@ -586,107 +448,88 @@ class ReaderActivity : AppCompatActivity() {
     private fun updateThemeUI(themeKey: String, indicators: Map<String, ImageView>) {
         indicators.values.forEach { it.visibility = View.GONE }
         indicators[themeKey]?.visibility = View.VISIBLE
-    }
+   }
 
-    private fun applyTheme(themeKey: String) {
+      private fun applyTheme(themeKey: String) {
         val gradient = when (themeKey) {
             "noche" -> {
-                // Midnight Premium: Profundo y serio
                 GradientDrawable(
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(
-                        Color.parseColor("#121212"), 
+                        Color.parseColor("#121212"),
                         Color.parseColor("#1E1E1E")
                     )
                 )
             }
             "caribe" -> {
-                // Deep Ocean: Sofisticado y fresco
                 GradientDrawable(
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(
-                        Color.parseColor("#0F2027"), 
+                        Color.parseColor("#0F2027"),
                         Color.parseColor("#203A43")
                     )
                 )
             }
             else -> {
-                // Warm Paper: Cálido y natural (Default/Amanecer)
                 GradientDrawable(
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(
-                        Color.parseColor("#FDFBF7"), 
+                        Color.parseColor("#FDFBF7"),
                         Color.parseColor("#F5F0E6")
                     )
                 )
             }
         }
 
-        // Aplicar fondo general
         drawerLayout.background = gradient
         window.statusBarColor = if (themeKey == "amanecer") Color.parseColor("#F5F0E6") else Color.parseColor("#000000")
-        window.decorView.setBackgroundColor(Color.TRANSPARENT) // Dejar que el gradient se vea
+        window.decorView.setBackgroundColor(Color.TRANSPARENT)
 
-        // Definir paleta de textos y acentos
         val (textMain, textValues, accentColor) = when (themeKey) {
             "noche" -> Triple(
-                Color.parseColor("#E0E0E0"), // Texto principal suave
-                Color.parseColor("#A0A0A0"), // Valores secundarios
-                Color.parseColor("#64B5F6")  // Azul Acero brillante
+                Color.parseColor("#E0E0E0"),
+                Color.parseColor("#A0A0A0"),
+                Color.parseColor("#64B5F6")
             )
             "caribe" -> Triple(
-                Color.parseColor("#F0F8FF"), // Blanco hielo
-                Color.parseColor("#B0E0E6"), // Azul pálido
-                Color.parseColor("#4DD0E1")  // Cian vibrante
+                Color.parseColor("#F0F8FF"),
+                Color.parseColor("#B0E0E6"),
+                Color.parseColor("#4DD0E1")
             )
-            else -> Triple( // Amanecer / Default
-                Color.parseColor("#2C2C2C"), // Gris carbón
-                Color.parseColor("#5D4037"), // Marrón tierra
-                Color.parseColor("#FFB74D")  // Ámbar cálido
+            else -> Triple(
+                Color.parseColor("#2C2C2C"),
+                Color.parseColor("#5D4037"),
+                Color.parseColor("#FFB74D")
             )
         }
 
-        // Aplicar colores a textos
         tvBookContent.setTextColor(textMain)
         speedValueText.setTextColor(textValues)
         pitchValueText.setTextColor(textValues)
 
-        // Aplicar acentos a SeekBars
         val accentStateList = ColorStateList.valueOf(accentColor)
         seekSpeed.progressTintList = accentStateList
         seekSpeed.thumbTintList = accentStateList
-        
         seekPitch.progressTintList = accentStateList
         seekPitch.thumbTintList = accentStateList
-        
         seekBrightness.progressTintList = accentStateList
         seekBrightness.thumbTintList = accentStateList
-        
         seekTextSize.progressTintList = accentStateList
         seekTextSize.thumbTintList = accentStateList
 
-        // Configu,rar widget tortuga
         turtleWidget.setNightMode(themeKey != "amanecer")
     }
 
-        private fun decodeHtmlEntities(text: String): String {
-    var result = text
-    result = result.replace("&nbsp;", " ")
-    result = result.replace("&amp;", "&")
-    result = result.replace("&lt;", "<")
-    result = result.replace("&gt;", ">")
-    result = result.replace("&quot;", "\"")
-    result = result.replace("&#39;", "'")
-    return result
-}
-
-private fun cleanHtmlTitle(html: String): String {
-    val withoutTags = html.replace(Regex("<[^>]*>"), "")
-    val decoded = decodeHtmlEntities(withoutTags)
-    return decoded.trim().let {
-        if (it.isBlank() || it.length < 2) "Sección" else it
+    private fun decodeHtmlEntities(text: String): String {
+        var result = text
+        result = result.replace("&nbsp;", " ")
+        result = result.replace("&amp;", "&")
+        result = result.replace("&lt;", "<")
+        result = result.replace("&gt;", ">")
+        result = result.replace("&quot;", "\"")
+        result = result.replace("&#39;", "'")
+        return result
     }
-}
 
     override fun onDestroy() {
         super.onDestroy()
@@ -695,4 +538,3 @@ private fun cleanHtmlTitle(html: String): String {
         saveProgress()
     }
 }
-                    
