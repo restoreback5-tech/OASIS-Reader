@@ -370,6 +370,12 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateTtsEngineLabel() {
+        val saved = tts.getSavedEngine()
+        val label = if (saved == null) null else tts.getEngines().firstOrNull { it.name == saved }?.label
+        tvTtsEngine.text = label ?: "Predeterminado del sistema"
+    }
+
     private fun showTtsEngineDialog() {
         val engines = tts.getEngines()
         if (engines.isEmpty()) {
@@ -494,9 +500,9 @@ class ReaderActivity : AppCompatActivity() {
     private fun saveProgress() {
         prefs.edit().putInt("last_chapter_index", currentChapterIndex).apply()
         prefs.edit().putInt("last_paragraph_index", currentParagraphIndex).apply()
-    }           
+    }
 
-     private fun setupSliders() {
+    private fun setupSliders() {
         seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
@@ -596,3 +602,4 @@ class ReaderActivity : AppCompatActivity() {
         saveProgress()
     }
 }
+
