@@ -47,6 +47,7 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var indicatorLuna: ImageView
     private lateinit var indicatorNubes: ImageView
     private lateinit var turtleWidget: TurtleView
+    private lateinit var tvTtsEngine: TextView
 
     // Swipe
     private lateinit var gestureDetector: GestureDetector
@@ -118,6 +119,13 @@ class ReaderActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btn_chapters).setOnClickListener {
             sound.play(R.raw.touch)
             showChapterListDialog()
+        }
+
+        tvTtsEngine = findViewById(R.id.btn_tts_engine)
+        updateTtsEngineLabel()
+        tvTtsEngine.setOnClickListener {
+            sound.play(R.raw.touch)
+            showTtsEngineDialog()
         }
 
         // Restaurar último libro si existe
@@ -265,6 +273,40 @@ class ReaderActivity : AppCompatActivity() {
                     saveProgress()
                 }
             }
+            .show()
+    }
+
+    private fun updateTtsEngineLabel() {
+        val saved = tts.getSavedEngine()
+        val label = if (saved == null) null else tts.getEngines().firstOrNull { it.name == saved }?.label
+        tvTtsEngine.text = label ?: "Predeterminado del sistema"
+    }
+
+    private fun showTtsEngineDialog() {
+        val engines = tts.getEngines()
+        if (engines.isEmpty()) {
+            Toast.makeText(this, "No se encontraron motores de voz instalados", Toast.LENGTH_LONG).show()
+            return
+        }
+        val names = arrayOf("Predeterminado del sistema") + engines.map { it.label }
+        val saved = tts.getSavedEngine()
+        val checked = if (saved == null) 0 else {
+            val idx = engines.indexOfFirst { it.name == saved }
+            if (idx < 0) 0 else idx + 1
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Motor de voz")
+            .setSingleChoiceItems(names, checked) { dialog, which ->
+                val pkg = if (which == 0) null else engines[which - 1].name
+                if (isPlaying) pauseReading()
+                tts.setEngine(pkg) {
+                    updateTtsEngineLabel()
+                    Toast.makeText(this, "Motor de voz: ${tvTtsEngine.text}", Toast.LENGTH_SHORT).show()
+                }
+                updateTtsEngineLabel()
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancelar", null)
             .show()
     }
 
@@ -439,9 +481,9 @@ class ReaderActivity : AppCompatActivity() {
     private fun updateThemeUI(themeKey: String, indicators: Map<String, ImageView>) {
         indicators.values.forEach { it.visibility = View.GONE }
         indicators[themeKey]?.visibility = View.VISIBLE
-    }
+   }
 
-    private fun applyTheme(themeKey: String) {
+   private fun applyTheme(themeKey: String) {
         val bgRes = when (themeKey) {
             "caribe" -> R.color.caribe_background
             "noche" -> R.color.oscuro_background

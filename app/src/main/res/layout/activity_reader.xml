@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout 
+xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
@@ -141,7 +142,8 @@
 
         </LinearLayout>
 
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
+        <View android:layout_width="match_parent" android:layout_height="1dp" 
+android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
 
         <!-- Velocidad de voz -->
         <TextView
@@ -196,6 +198,28 @@
             android:textColor="#1C1C1E"
             android:gravity="center" />
 
+        <!-- Motor de voz -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Motor de voz"
+            android:textSize="16sp"
+            android:textColor="#1C1C1E" />
+
+        <TextView
+            android:id="@+id/btn_tts_engine"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:gravity="center_vertical"
+            android:text="Predeterminado del sistema"
+            android:textSize="14sp"
+            android:textColor="@color/settings_accent_blue"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground" />
+
         <!-- Brillo placebo -->
         <TextView
             android:layout_width="wrap_content"
@@ -232,7 +256,8 @@
             android:progressTint="@color/settings_accent_blue"
             android:thumbTint="@color/settings_accent_blue" />
 
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
+        <View android:layout_width="match_parent" android:layout_height="1dp" 
+android:layout_marginVertical="16dp" android:background="#E5E5EA"/>
 
         <!-- Botones Play, Capítulos y Libro -->
         <LinearLayout
