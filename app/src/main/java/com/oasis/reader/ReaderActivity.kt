@@ -63,6 +63,7 @@ class ReaderActivity : AppCompatActivity() {
     private var currentUri: Uri? = null
 
     private lateinit var epubParser: EpubParser
+    private var parsedBook: EpubParser.ParsedEpub? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -231,8 +232,8 @@ class ReaderActivity : AppCompatActivity() {
                 Toast.makeText(this, "No se encontraron capítulos en el EPUB", Toast.LENGTH_LONG).show()
                 return
             }
-            chapterTitles = parsed.chapterTitles
-            chapterContents = parsed.chapterContents
+            parsedBook = parsed
+            rebuildVisibleSections()
             currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
             currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
             if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
@@ -256,15 +257,92 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
+    // ---- Secciones ocultas (notas, abreviaturas, apéndices cortos...) ----
+
+    private fun manualHiddenKey(): String = "manual_hidden_" + (currentUri?.toString() ?: "").hashCode()
+
+    private fun manualHiddenSet(): MutableSet<String> =
+        (prefs.getStringSet(manualHiddenKey(), emptySet()) ?: emptySet()).toMutableSet()
+
+    private fun isSectionHidden(book: EpubParser.ParsedEpub, i: Int, manual: Set<String>): Boolean =
+        book.chapterHidden.getOrElse(i) { false } || book.chapterTitles[i] in manual
+
+    // Arma la lista de capítulos visibles. Si "mostrar ocultas" está activo, entran todas.
+    private fun rebuildVisibleSections() {
+        val book = parsedBook ?: return
+        val showAll = prefs.getBoolean("show_hidden_sections", false)
+        val manual = manualHiddenSet()
+        val titles = mutableListOf<String>()
+        val contents = mutableListOf<List<String>>()
+        for (i in book.chapterTitles.indices) {
+            if (showAll || !isSectionHidden(book, i, manual)) {
+                titles.add(book.chapterTitles[i])
+                contents.add(book.chapterContents[i])
+            }
+        }
+        if (titles.isEmpty()) { // por si todo quedó oculto
+            titles.addAll(book.chapterTitles)
+            contents.addAll(book.chapterContents)
+        }
+        chapterTitles = titles
+        chapterContents = contents
+    }
+
+    private fun countHiddenSections(): Int {
+        val book = parsedBook ?: return 0
+        val manual = manualHiddenSet()
+        return book.chapterTitles.indices.count { isSectionHidden(book, it, manual) }
+    }
+
+    // Reconstruye la lista y se queda en el mismo capítulo si sigue visible.
+    private fun refreshSections() {
+        val currentTitle = chapterTitles.getOrNull(currentChapterIndex)
+        if (isPlaying) pauseReading()
+        rebuildVisibleSections()
+        val idx = chapterTitles.indexOf(currentTitle)
+        if (idx >= 0) {
+            currentChapterIndex = idx
+        } else {
+            currentChapterIndex = currentChapterIndex.coerceIn(0, chapterTitles.size - 1)
+            currentParagraphIndex = 0
+        }
+        showCurrentContent()
+        saveProgress()
+    }
+
+    private fun toggleShowHiddenSections() {
+        val showAll = prefs.getBoolean("show_hidden_sections", false)
+        prefs.edit().putBoolean("show_hidden_sections", !showAll).apply()
+        refreshSections()
+    }
+
+    private fun toggleManualHidden(title: String) {
+        val manual = manualHiddenSet()
+        if (!manual.remove(title)) manual.add(title)
+        prefs.edit().putStringSet(manualHiddenKey(), manual).apply()
+        refreshSections()
+    }
+
     private fun showChapterListDialog() {
         if (chapterTitles.isEmpty()) {
             Toast.makeText(this, "No hay capítulos cargados", Toast.LENGTH_SHORT).show()
             return
         }
-        AlertDialog.Builder(this)
+        val showAll = prefs.getBoolean("show_hidden_sections", false)
+        val hiddenCount = countHiddenSections()
+        val items = chapterTitles.toMutableList()
+        if (hiddenCount > 0) {
+            items.add(
+                if (showAll) "Ocultar secciones auxiliares ($hiddenCount)"
+                else "Mostrar secciones ocultas ($hiddenCount)"
+            )
+        }
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Índice")
-            .setItems(chapterTitles.toTypedArray()) { _, which ->
-                if (which != currentChapterIndex) {
+            .setItems(items.toTypedArray()) { _, which ->
+                if (which >= chapterTitles.size) {
+                    toggleShowHiddenSections()
+                } else if (which != currentChapterIndex) {
                     sound.play(R.raw.page_flip)
                     currentChapterIndex = which
                     currentParagraphIndex = 0
@@ -273,13 +351,23 @@ class ReaderActivity : AppCompatActivity() {
                     saveProgress()
                 }
             }
-            .show()
-    }
-
-    private fun updateTtsEngineLabel() {
-        val saved = tts.getSavedEngine()
-        val label = if (saved == null) null else tts.getEngines().firstOrNull { it.name == saved }?.label
-        tvTtsEngine.text = label ?: "Predeterminado del sistema"
+            .create()
+        dialog.show()
+        // Mantener presionado un título para ocultarlo (o dejar de ocultarlo).
+        dialog.listView.setOnItemLongClickListener { _, _, position, _ ->
+            if (position >= chapterTitles.size) return@setOnItemLongClickListener false
+            val title = chapterTitles[position]
+            val alreadyHidden = title in manualHiddenSet()
+            AlertDialog.Builder(this)
+                .setMessage(if (alreadyHidden) "¿Dejar de ocultar \"$title\"?" else "¿Ocultar \"$title\"?")
+                .setPositiveButton(if (alreadyHidden) "Dejar de ocultar" else "Ocultar") { _, _ ->
+                    dialog.dismiss()
+                    toggleManualHidden(title)
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+            true
+        }
     }
 
     private fun showTtsEngineDialog() {
@@ -406,9 +494,9 @@ class ReaderActivity : AppCompatActivity() {
     private fun saveProgress() {
         prefs.edit().putInt("last_chapter_index", currentChapterIndex).apply()
         prefs.edit().putInt("last_paragraph_index", currentParagraphIndex).apply()
-    }
+    }           
 
-    private fun setupSliders() {
+     private fun setupSliders() {
         seekSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
@@ -481,9 +569,9 @@ class ReaderActivity : AppCompatActivity() {
     private fun updateThemeUI(themeKey: String, indicators: Map<String, ImageView>) {
         indicators.values.forEach { it.visibility = View.GONE }
         indicators[themeKey]?.visibility = View.VISIBLE
-   }
+    }
 
-   private fun applyTheme(themeKey: String) {
+    private fun applyTheme(themeKey: String) {
         val bgRes = when (themeKey) {
             "caribe" -> R.color.caribe_background
             "noche" -> R.color.oscuro_background

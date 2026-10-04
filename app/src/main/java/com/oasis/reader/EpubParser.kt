@@ -11,7 +11,9 @@ class EpubParser(private val contentResolver: ContentResolver) {
 
     data class ParsedEpub(
         val chapterTitles: MutableList<String>,
-        val chapterContents: MutableList<List<String>>
+        val chapterContents: MutableList<List<String>>,
+        // true = sección auxiliar (notas, abreviaturas, apéndices cortos...) oculta por defecto
+        val chapterHidden: MutableList<Boolean> = mutableListOf()
     )
 
     private val regexOptions = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
@@ -28,6 +30,14 @@ class EpubParser(private val contentResolver: ContentResolver) {
     )
     private val anyTagRegex = Regex("<[^>]*>")
     private val entityRegex = Regex("&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);")
+    // Títulos de secciones que solo traen datos o palabras sueltas.
+    private val auxiliaryTitleRegex = Regex(
+        "^(?:(?:lista de )?(?:abreviaturas|siglas|acr[oó]nimos)(?: y (?:siglas|acr[oó]nimos|abreviaturas))?" +
+            "|notas?(?: del (?:autor|editor|traductor))?" +
+            "|notes" +
+            "|glosario" +
+            "|[ií]ndice (?:anal[ií]tico|onom[aá]stico|alfab[eé]tico|de nombres|de materias|de t[eé]rminos))$"
+    )
     private val headingRegex = Regex("<h[1-6][^>]*>(.*?)</h[1-6]\\s*>", regexOptions)
 
     private val namedEntities = mapOf(
@@ -51,6 +61,8 @@ class EpubParser(private val contentResolver: ContentResolver) {
         val mainContents = mutableListOf<List<String>>()
         val appendixTitles = mutableListOf<String>()
         val appendixContents = mutableListOf<List<String>>()
+        val mainHidden = mutableListOf<Boolean>()
+        val appendixHidden = mutableListOf<Boolean>()
 
         val inputStream = contentResolver.openInputStream(uri) ?: return ParsedEpub(mainTitles, mainContents)
         val zip = ZipInputStream(inputStream)
@@ -128,11 +140,13 @@ class EpubParser(private val contentResolver: ContentResolver) {
                 }
                 mainTitles.add(title)
                 mainContents.add(paragraphs)
+                mainHidden.add(isAuxiliaryTitle(title))
             } else {
                 val appendixIndex = appendixTitles.size + 1
                 val title = extractedTitle ?: "Apéndice $appendixIndex"
                 appendixTitles.add(title)
                 appendixContents.add(paragraphs)
+                appendixHidden.add(true) // secciones cortas: datos sueltos, se ocultan por defecto
             }
         }
 
@@ -146,7 +160,16 @@ class EpubParser(private val contentResolver: ContentResolver) {
             addAll(appendixContents)
         }
 
-        return ParsedEpub(finalTitles, finalContents)
+        val finalHidden = mutableListOf<Boolean>().apply {
+            addAll(mainHidden)
+            addAll(appendixHidden)
+        }
+
+        return ParsedEpub(finalTitles, finalContents, finalHidden)
+    }
+
+    private fun isAuxiliaryTitle(title: String): Boolean {
+        return auxiliaryTitleRegex.matches(title.trim().trimEnd('.', ':').lowercase())
     }
 
     // Quita head, script, style y comentarios (con su contenido).
@@ -174,7 +197,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
 
     private fun extractTitleFromHtml(html: String): String? {
         val match = headingRegex.find(html)
-        return match?.groupValues?.get(1)?.let { htmlToPlainText(it) }?.takeIf { it.isNotBlank() }
+        return match?.groupValues?.get(1)?.let { htmlToPlainText(it, " ") }?.takeIf { it.isNotBlank() }
     }
 
     private fun parseContainerXml(xml: String): String? {
@@ -263,8 +286,8 @@ class EpubParser(private val contentResolver: ContentResolver) {
         return parts.joinToString("/")
     }
 
-    private fun htmlToPlainText(html: String): String {
-        val noTags = html.replace(anyTagRegex, "")
+    private fun htmlToPlainText(html: String, tagReplacement: String = ""): String {
+        val noTags = html.replace(anyTagRegex, tagReplacement)
         return decodeEntities(noTags)
             .replace('\u00A0', ' ')
             .replace(Regex("\\s+"), " ")
