@@ -14,6 +14,38 @@ class EpubParser(private val contentResolver: ContentResolver) {
         val chapterContents: MutableList<List<String>>
     )
 
+    private val regexOptions = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+
+    // Bloques que no son texto del libro.
+    private val headRegex = Regex("<head\\b.*?</head\\s*>", regexOptions)
+    private val scriptStyleRegex = Regex("<(script|style)\\b.*?</\\1\\s*>", regexOptions)
+    private val commentRegex = Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL)
+
+    // Etiquetas que separan párrafos. Las demás (i, b, span, a...) se quitan sin partir el texto.
+    private val blockTagRegex = Regex(
+        "</?(?:p|div|br|h[1-6]|li|ul|ol|tr|td|th|table|blockquote|section|article|aside|header|footer|figure|figcaption|pre|hr|dt|dd|nav|caption)\\b[^>]*>",
+        RegexOption.IGNORE_CASE
+    )
+    private val anyTagRegex = Regex("<[^>]*>")
+    private val entityRegex = Regex("&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);")
+    private val headingRegex = Regex("<h[1-6][^>]*>(.*?)</h[1-6]\\s*>", regexOptions)
+
+    private val namedEntities = mapOf(
+        "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'",
+        "nbsp" to " ", "ensp" to " ", "emsp" to " ", "thinsp" to " ",
+        "hellip" to "…", "mdash" to "—", "ndash" to "–", "bull" to "•", "middot" to "·",
+        "lsquo" to "‘", "rsquo" to "’", "ldquo" to "“", "rdquo" to "”",
+        "laquo" to "«", "raquo" to "»", "iexcl" to "¡", "iquest" to "¿",
+        "ordf" to "ª", "ordm" to "º", "deg" to "°", "copy" to "©", "reg" to "®", "sect" to "§",
+        "aacute" to "á", "eacute" to "é", "iacute" to "í", "oacute" to "ó", "uacute" to "ú",
+        "Aacute" to "Á", "Eacute" to "É", "Iacute" to "Í", "Oacute" to "Ó", "Uacute" to "Ú",
+        "ntilde" to "ñ", "Ntilde" to "Ñ", "uuml" to "ü", "Uuml" to "Ü",
+        "agrave" to "à", "egrave" to "è", "igrave" to "ì", "ograve" to "ò", "ugrave" to "ù",
+        "acirc" to "â", "ecirc" to "ê", "icirc" to "î", "ocirc" to "ô", "ucirc" to "û",
+        "auml" to "ä", "euml" to "ë", "iuml" to "ï", "ouml" to "ö",
+        "ccedil" to "ç", "Ccedil" to "Ç", "atilde" to "ã", "otilde" to "õ"
+    )
+
     fun parse(uri: Uri): ParsedEpub {
         val mainTitles = mutableListOf<String>()
         val mainContents = mutableListOf<List<String>>()
@@ -36,15 +68,17 @@ class EpubParser(private val contentResolver: ContentResolver) {
         if (containerXml.isEmpty()) return ParsedEpub(mainTitles, mainContents)
 
         val opfPath = parseContainerXml(containerXml) ?: return ParsedEpub(mainTitles, mainContents)
+        val opfPathDecoded = Uri.decode(opfPath)
+        val opfKey = key(opfPathDecoded)
 
         val zip2 = ZipInputStream(contentResolver.openInputStream(uri))
         var opfContent = ""
         var opfDir = ""
         entry = zip2.nextEntry
         while (entry != null) {
-            if (entry.name.equals(opfPath, ignoreCase = true)) {
+            if (key(entry.name) == opfKey) {
                 opfContent = String(zip2.readBytes(), Charsets.UTF_8)
-                opfDir = opfPath.let { File(it).parent } ?: ""
+                opfDir = File(opfPathDecoded).parent ?: ""
                 break
             }
             entry = zip2.nextEntry
@@ -59,9 +93,9 @@ class EpubParser(private val contentResolver: ContentResolver) {
         val filesMap = mutableMapOf<String, String>()
         entry = zip3.nextEntry
         while (entry != null) {
-            val name = entry.name
-            if (items.containsKey(name)) {
-                filesMap[name] = String(zip3.readBytes(), Charsets.UTF_8)
+            val entryKey = key(entry.name)
+            if (items.containsKey(entryKey)) {
+                filesMap[entryKey] = String(zip3.readBytes(), Charsets.UTF_8)
             }
             entry = zip3.nextEntry
         }
@@ -71,18 +105,16 @@ class EpubParser(private val contentResolver: ContentResolver) {
 
         for (href in spine) {
             val rawHtml = filesMap[href] ?: continue
-            val plainText = htmlToPlainText(rawHtml)
-            val paragraphs = splitHtmlIntoParagraphs(rawHtml)
-                .map { htmlToPlainText(it) }
-                .filter { it.isNotBlank() }
-            
+            val cleanHtml = removeNonContent(rawHtml)
+            val paragraphs = splitHtmlIntoParagraphs(cleanHtml)
+
             if (paragraphs.isEmpty()) continue
 
-            val totalLength = plainText.length
+            val totalLength = paragraphs.sumOf { it.length }
             val isMainChapter = totalLength >= MIN_CHAR_COUNT
 
             // Extraer título del primer encabezado HTML
-            val extractedTitle = extractTitleFromHtml(rawHtml)
+            val extractedTitle = extractTitleFromHtml(cleanHtml)
 
             if (isMainChapter) {
                 val title = when {
@@ -117,28 +149,31 @@ class EpubParser(private val contentResolver: ContentResolver) {
         return ParsedEpub(finalTitles, finalContents)
     }
 
+    // Quita head, script, style y comentarios (con su contenido).
+    private fun removeNonContent(html: String): String {
+        return html
+            .replace(commentRegex, "")
+            .replace(headRegex, "")
+            .replace(scriptStyleRegex, "")
+    }
+
     private fun splitHtmlIntoParagraphs(html: String): List<String> {
-        val paragraphs = mutableListOf<String>()
-        
-        // Eliminar contenido de <head> si existe
-        val bodyContent = html.replace(Regex("(?s)<head>.*?</head>"), "")
-        
-        // Dividir por etiquetas <p>, </p>, <div>, </div>, <br>, <h1>-<h6>
-        val parts = bodyContent.split(Regex("(?i)<p[^>]*>|</p>|<div[^>]*>|</div>|<br[^>]*>|<h[1-6][^>]*>|</h[1-6]>"))
-        
-        for (part in parts) {
-            val trimmed = part.trim()
-            if (trimmed.isNotEmpty() && !trimmed.startsWith("<") && !trimmed.endsWith(">")) {
-                paragraphs.add(trimmed)
-            }
+        // Se parte por etiquetas de bloque; en cada trozo se quitan las etiquetas restantes
+        // (cursiva, negrita, enlaces...) y se decodifican las entidades.
+        val paragraphs = html.split(blockTagRegex)
+            .map { htmlToPlainText(it) }
+            .filter { it.isNotBlank() }
+
+        return if (paragraphs.isEmpty()) {
+            val whole = htmlToPlainText(html)
+            if (whole.isBlank()) emptyList() else listOf(whole)
+        } else {
+            paragraphs
         }
-        
-        return if (paragraphs.isEmpty()) listOf(htmlToPlainText(html)) else paragraphs
     }
 
     private fun extractTitleFromHtml(html: String): String? {
-        val headerRegex = Regex("""<h[1-6][^>]*>(.*?)</h[1-6]>""", RegexOption.IGNORE_CASE)
-        val match = headerRegex.find(html)
+        val match = headingRegex.find(html)
         return match?.groupValues?.get(1)?.let { htmlToPlainText(it) }?.takeIf { it.isNotBlank() }
     }
 
@@ -179,7 +214,7 @@ class EpubParser(private val contentResolver: ContentResolver) {
                                 val href = parser.getAttributeValue(null, "href")
                                 val mediaType = parser.getAttributeValue(null, "media-type")
                                 if (href != null && (mediaType?.contains("xhtml") == true || mediaType?.contains("html") == true)) {
-                                    val fullHref = if (opfDir.isNotEmpty()) "$opfDir/$href" else href
+                                    val fullHref = resolveHref(opfDir, href)
                                     items[fullHref] = Pair(mediaType ?: "", "")
                                     if (id != null) idToHref[id] = fullHref
                                 }
@@ -206,10 +241,50 @@ class EpubParser(private val contentResolver: ContentResolver) {
         return Pair(items, spine)
     }
 
+    // Ruta de un href del OPF: decodifica %20 etc., quita #fragmento y resuelve ../ y ./
+    private fun resolveHref(baseDir: String, href: String): String {
+        val clean = Uri.decode(href.substringBefore('#').substringBefore('?'))
+        return key(if (baseDir.isNotEmpty()) "$baseDir/$clean" else clean)
+    }
+
+    // Llave para comparar rutas: normalizada y sin distinguir mayúsculas.
+    private fun key(path: String): String = normalizePath(path).lowercase()
+
+    private fun normalizePath(path: String): String {
+        val parts = mutableListOf<String>()
+        for (seg in path.replace('\\', '/').split('/')) {
+            if (seg.isEmpty() || seg == ".") continue
+            if (seg == "..") {
+                if (parts.isNotEmpty()) parts.removeAt(parts.lastIndex)
+            } else {
+                parts.add(seg)
+            }
+        }
+        return parts.joinToString("/")
+    }
+
     private fun htmlToPlainText(html: String): String {
-        return html.replace(Regex("<[^>]*>"), " ")
+        val noTags = html.replace(anyTagRegex, "")
+        return decodeEntities(noTags)
+            .replace('\u00A0', ' ')
             .replace(Regex("\\s+"), " ")
             .trim()
+    }
+
+    private fun decodeEntities(text: String): String {
+        if (!text.contains('&')) return text
+        return entityRegex.replace(text) { m ->
+            val ent = m.groupValues[1]
+            when {
+                ent.startsWith("#x") || ent.startsWith("#X") -> codePointToString(ent.substring(2).toIntOrNull(16), m.value)
+                ent.startsWith("#") -> codePointToString(ent.substring(1).toIntOrNull(), m.value)
+                else -> namedEntities[ent] ?: m.value
+            }
+        }
+    }
+
+    private fun codePointToString(cp: Int?, fallback: String): String {
+        return if (cp != null && cp in 1..0x10FFFF) String(Character.toChars(cp)) else fallback
     }
 
     private fun convertToRoman(num: Int): String {
