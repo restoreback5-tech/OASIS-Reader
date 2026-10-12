@@ -388,6 +388,58 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
+        private fun showSearchDialog() {
+        if (chapterContents.isEmpty()) {
+            Toast.makeText(this, "Primero selecciona un libro EPUB", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val motor = buscador ?: BuscadorLibro(chapterContents).also { buscador = it }
+        val resultados = mutableListOf<BuscadorLibro.Resultado>()
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf<String>())
+        val input = EditText(this).apply { hint = "Buscar en el libro"; setSingleLine() }
+        val lista = ListView(this).apply {
+            this.adapter = adapter
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.5).toInt())
+        }
+        val caja = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 0)
+            addView(input); addView(lista)
+        }
+        val dialog = AlertDialog.Builder(this).setTitle("Buscar")
+            .setView(caja).setNegativeButton("Cerrar", null).create()
+
+        val handler = Handler(Looper.getMainLooper())
+        var tarea: Runnable? = null
+        input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                tarea?.let { handler.removeCallbacks(it) }
+                tarea = Runnable {
+                    resultados.clear()
+                    resultados.addAll(motor.buscar(s.toString()))
+                    adapter.clear()
+                    adapter.addAll(resultados.map { "${chapterTitles[it.capitulo]}: …${it.fragmento}…" })
+                }
+                handler.postDelayed(tarea!!, 300)
+            }
+        })
+        lista.setOnItemClickListener { _, _, pos, _ ->
+            val r = resultados[pos]
+            if (isPlaying) pauseReading()
+            currentChapterIndex = r.capitulo
+            currentParagraphIndex = r.parrafo
+            pendingHighlight = intArrayOf(r.inicio, r.largo)
+            showCurrentContent()
+            saveProgress()
+            dialog.dismiss()
+        }
+        dialog.show()
+    }
+
     private fun updateTtsEngineLabel() {
         val saved = tts.getSavedEngine()
         val label = if (saved == null) null else tts.getEngines().firstOrNull { it.name == saved }?.label
