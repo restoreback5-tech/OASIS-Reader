@@ -131,6 +131,10 @@ class ReaderActivity : AppCompatActivity() {
             showChapterListDialog()
         }
 
+        findViewById<ImageButton>(R.id.btn_chapters).setOnLongClickListener {
+    showSearchDialog(); true
+        }
+
         tvTtsEngine = findViewById(R.id.btn_tts_engine)
         updateTtsEngineLabel()
         tvTtsEngine.setOnClickListener {
