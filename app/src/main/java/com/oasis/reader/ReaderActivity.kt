@@ -19,6 +19,13 @@ import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import com.oasis.turtle.TurtleView
 import kotlin.math.abs
+import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
+import android.text.style.BackgroundColorSpan
+
 
 class ReaderActivity : AppCompatActivity() {
 
@@ -64,6 +71,8 @@ class ReaderActivity : AppCompatActivity() {
 
     private lateinit var epubParser: EpubParser
     private var parsedBook: EpubParser.ParsedEpub? = null
+    private var buscador: BuscadorLibro? = null
+    private var pendingHighlight: IntArray? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -242,6 +251,7 @@ class ReaderActivity : AppCompatActivity() {
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
+
         }
     }
 
@@ -252,6 +262,13 @@ class ReaderActivity : AppCompatActivity() {
             val paragraphText = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
             val spannable = SpannableString("$title\n\n$paragraphText")
             spannable.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            pendingHighlight?.let { (ini, largo) ->
+    val off = title.length + 2
+    if (ini + largo <= paragraphText.length)
+        spannable.setSpan(BackgroundColorSpan(Color.YELLOW), off + ini, off + ini + largo,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+   }
+            pendingHighlight = null
             tvBookContent.text = spannable
             scrollText.scrollTo(0, 0)
         }
@@ -286,6 +303,7 @@ class ReaderActivity : AppCompatActivity() {
         }
         chapterTitles = titles
         chapterContents = contents
+        buscador = null
     }
 
     private fun countHiddenSections(): Int {
