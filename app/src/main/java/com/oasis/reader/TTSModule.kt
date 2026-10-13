@@ -18,14 +18,16 @@ class TTSModule(private val ctx: Context) : TextToSpeech.OnInitListener {
 
     private var tts: TextToSpeech? = null
     private val prefs: SharedPreferences = ctx.getSharedPreferences("oasis_settings", Context.MODE_PRIVATE)
+    
+    // Callbacks protegidos por 'synchronized'
     private var onDoneCallback: (() -> Unit)? = null
     private var onReadyCallback: (() -> Unit)? = null
+    private var currentUtteranceId: String? = null
 
     init {
         createEngine()
     }
 
-    // Crea el TextToSpeech con el motor guardado (o el predeterminado del sistema si no hay uno).
     private fun createEngine() {
         val enginePkg = prefs.getString(KEY_ENGINE, null)
         tts = if (enginePkg.isNullOrEmpty()) {
@@ -37,7 +39,6 @@ class TTSModule(private val ctx: Context) : TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status != TextToSpeech.SUCCESS) {
-            // Si el motor elegido ya no existe o falla, vuelve al predeterminado.
             if (!prefs.getString(KEY_ENGINE, null).isNullOrEmpty()) {
                 prefs.edit().remove(KEY_ENGINE).apply()
                 Handler(Looper.getMainLooper()).post {
@@ -59,15 +60,38 @@ class TTSModule(private val ctx: Context) : TextToSpeech.OnInitListener {
 
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
+            
             override fun onDone(utteranceId: String?) {
-                onDoneCallback?.invoke()
-                onDoneCallback = null
+                finish(utteranceId, false)
             }
-            override fun onError(utteranceId: String?) {}
+
+            override fun onError(utteranceId: String?) {
+                finish(utteranceId, true)
+            }
+
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                finish(utteranceId, true)
+            }
         })
 
         onReadyCallback?.invoke()
         onReadyCallback = null
+    }
+
+    // Toma el callback, lo borra y luego lo invoca (evita condiciones de carrera).
+    private fun finish(utteranceId: String?, error: Boolean) {
+        synchronized(this) {
+            if (utteranceId == null || utteranceId != currentUtteranceId) return
+            val callback = onDoneCallback
+            onDoneCallback = null
+            currentUtteranceId = null
+            if (error) {
+                // Opcional: podrías notificar un error distinto aquí si quisieras
+                callback?.invoke() // Por ahora usamos el mismo callback para simplificar
+            } else {
+                callback?.invoke()
+            }
+        }
     }
 
     private fun applySpeechRateAndPitch() {
@@ -77,19 +101,18 @@ class TTSModule(private val ctx: Context) : TextToSpeech.OnInitListener {
         tts?.setPitch(pitch)
     }
 
-    // Motores de voz instalados en el teléfono.
     fun getEngines(): List<TextToSpeech.EngineInfo> = tts?.engines ?: emptyList()
-
-    // Paquete del motor elegido por el usuario, o null si usa el predeterminado del sistema.
     fun getSavedEngine(): String? = prefs.getString(KEY_ENGINE, null)
 
-    // Cambia de motor. pkg = null vuelve al predeterminado del sistema.
     fun setEngine(pkg: String?, onReady: (() -> Unit)? = null) {
         val editor = prefs.edit()
         if (pkg.isNullOrEmpty()) editor.remove(KEY_ENGINE) else editor.putString(KEY_ENGINE, pkg)
         editor.apply()
 
-        onDoneCallback = null
+        synchronized(this) {
+            onDoneCallback = null
+            currentUtteranceId = null
+        }
         onReadyCallback = onReady
         tts?.stop()
         tts?.shutdown()
@@ -97,14 +120,32 @@ class TTSModule(private val ctx: Context) : TextToSpeech.OnInitListener {
         createEngine()
     }
 
-    fun speak(text: String, onDone: (() -> Unit)? = null) {
-        onDoneCallback = onDone
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
+    fun speak(text: String, onError: (() -> Unit)? = null, onDone: (() -> Unit)? = null) {
+        val id = UUID.randomUUID().toString()
+        synchronized(this) {
+            currentUtteranceId = id
+            onDoneCallback = {
+                // Envolvemos para capturar errores
+                try { onDone?.invoke() } catch (e: Exception) { onError?.invoke() }
+            }
+        }
+        
+        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+        if (result == TextToSpeech.ERROR || tts == null) {
+            synchronized(this) {
+                currentUtteranceId = null
+                onDoneCallback = null
+            }
+            onError?.invoke()
+        }
     }
 
     fun stop() {
         tts?.stop()
-        onDoneCallback = null
+        synchronized(this) {
+            currentUtteranceId = null
+            onDoneCallback = null
+        }
     }
 
     fun updateSpeechSettings() {
@@ -115,5 +156,10 @@ class TTSModule(private val ctx: Context) : TextToSpeech.OnInitListener {
         tts?.stop()
         tts?.shutdown()
         tts = null
+        synchronized(this) {
+            currentUtteranceId = null
+            onDoneCallback = null
+            onReadyCallback = null
+        }
     }
 }

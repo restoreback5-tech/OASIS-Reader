@@ -648,15 +648,25 @@ class ReaderActivity : AppCompatActivity() {
         val chunks = splitTextForTts(text)
         var chunkIndex = 0
 
-        fun speakNextChunk() {
-            if (!isPlaying) return
-            if (chunkIndex < chunks.size) {
-                tts.speak(chunks[chunkIndex]) {
-                    runOnUiThread {
-                        chunkIndex++
-                        speakNextChunk()
-                    }
-                }
+        tts.speak(
+    text = chunks[chunkIndex],
+    onError = {
+        runOnUiThread {
+            pauseReading()
+            Toast.makeText(
+                this@ReaderActivity,
+                "La voz falló. Toca reproducir para continuar.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    },
+    onDone = {
+        runOnUiThread {
+            chunkIndex++
+            speakNextChunk()
+        }
+    }
+  )
             } else {
                 runOnUiThread {
                     currentParagraphIndex++
