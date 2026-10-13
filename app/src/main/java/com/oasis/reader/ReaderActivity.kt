@@ -72,7 +72,11 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var epubParser: EpubParser
     private var parsedBook: EpubParser.ParsedEpub? = null
     private var buscador: BuscadorLibro? = null
-    private var pendingHighlight: IntArray? = null
+    private var consultaResaltada: String? = null
+    private var resultadosBusqueda: List<BuscadorLibro.Resultado> = emptyList()
+    private var posResultado = -1
+    private var barraBusqueda: PopupWindow? = null
+    private var contadorBusqueda: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -266,13 +270,22 @@ class ReaderActivity : AppCompatActivity() {
             val paragraphText = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
             val spannable = SpannableString("$title\n\n$paragraphText")
             spannable.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            pendingHighlight?.let { (ini, largo) ->
-    val off = title.length + 2
-    if (ini + largo <= paragraphText.length)
-        spannable.setSpan(BackgroundColorSpan(Color.YELLOW), off + ini, off + ini + largo,
-            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-   }
-            pendingHighlight = null
+            
+            val consulta = consultaResaltada
+            val motor = buscador
+       if (consulta != null && motor != null) {
+            val off = title.length + 2
+            val actual = resultadosBusqueda.getOrNull(posResultado)
+            for (r in motor.coincidencias(paragraphText, consulta)) {
+             val esActual = actual != null && actual.capitulo == currentChapterIndex &&
+            actual.parrafo == currentParagraphIndex && actual.inicio == r.first
+        spannable.setSpan(
+            BackgroundColorSpan(if (esActual) Color.parseColor("#FF9800") else Color.YELLOW),
+            off + r.first, off + r.last + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
+}
+
             tvBookContent.text = spannable
             scrollText.scrollTo(0, 0)
         }
@@ -308,6 +321,7 @@ class ReaderActivity : AppCompatActivity() {
         chapterTitles = titles
         chapterContents = contents
         buscador = null
+        cerrarBarraBusqueda()
     }
 
     private fun countHiddenSections(): Int {
@@ -392,13 +406,25 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
-        private fun showSearchDialog() {
+
+            private fun leerHistorial(): List<String> =
+        (prefs.getString("historial_busquedas", "") ?: "").split("\n").filter { it.isNotBlank() }
+
+    private fun guardarEnHistorial(q: String) {
+        val limpio = q.trim()
+        if (limpio.length < 2) return
+        val nuevo = (listOf(limpio) + leerHistorial().filter { !it.equals(limpio, true) }).take(8)
+        prefs.edit().putString("historial_busquedas", nuevo.joinToString("\n")).apply()
+    }
+
+    private fun showSearchDialog() {
         if (chapterContents.isEmpty()) {
             Toast.makeText(this, "Primero selecciona un libro EPUB", Toast.LENGTH_SHORT).show()
             return
         }
         val motor = buscador ?: BuscadorLibro(chapterContents).also { buscador = it }
         val resultados = mutableListOf<BuscadorLibro.Resultado>()
+        var modoHistorial = true
         val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf<String>())
         val input = EditText(this).apply { hint = "Buscar en el libro"; setSingleLine() }
         val lista = ListView(this).apply {
@@ -415,6 +441,13 @@ class ReaderActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this).setTitle("Buscar")
             .setView(caja).setNegativeButton("Cerrar", null).create()
 
+        fun mostrarHistorial() {
+            modoHistorial = true
+            resultados.clear()
+            adapter.clear()
+            adapter.addAll(leerHistorial().map { "🕘 $it" })
+        }
+
         val handler = Handler(Looper.getMainLooper())
         var tarea: Runnable? = null
         input.addTextChangedListener(object : TextWatcher {
@@ -423,25 +456,92 @@ class ReaderActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {
                 tarea?.let { handler.removeCallbacks(it) }
                 tarea = Runnable {
-                    resultados.clear()
-                    resultados.addAll(motor.buscar(s.toString()))
-                    adapter.clear()
-                    adapter.addAll(resultados.map { "${chapterTitles[it.capitulo]}: …${it.fragmento}…" })
+                    val texto = s.toString()
+                    if (texto.trim().length < 2) {
+                        mostrarHistorial()
+                    } else {
+                        modoHistorial = false
+                        resultados.clear()
+                        resultados.addAll(motor.buscar(texto))
+                        adapter.clear()
+                        adapter.addAll(resultados.map { "${chapterTitles[it.capitulo]}: …${it.fragmento}…" })
+                    }
                 }
                 handler.postDelayed(tarea!!, 300)
             }
         })
         lista.setOnItemClickListener { _, _, pos, _ ->
-            val r = resultados[pos]
-            if (isPlaying) pauseReading()
-            currentChapterIndex = r.capitulo
-            currentParagraphIndex = r.parrafo
-            pendingHighlight = intArrayOf(r.inicio, r.largo)
-            showCurrentContent()
-            saveProgress()
+            if (modoHistorial) {
+                input.setText(leerHistorial().getOrNull(pos) ?: "")
+                input.setSelection(input.text.length)
+                return@setOnItemClickListener
+            }
+            guardarEnHistorial(input.text.toString())
+            resultadosBusqueda = resultados.toList()
+            consultaResaltada = input.text.toString()
             dialog.dismiss()
+            mostrarBarraBusqueda()
+            irAResultado(pos)
         }
+        mostrarHistorial()
         dialog.show()
+    }
+
+    private fun irAResultado(pos: Int) {
+        val r = resultadosBusqueda.getOrNull(pos) ?: return
+        posResultado = pos
+        if (isPlaying) pauseReading()
+        currentChapterIndex = r.capitulo
+        currentParagraphIndex = r.parrafo
+        showCurrentContent()
+        saveProgress()
+        contadorBusqueda?.text = "${pos + 1} / ${resultadosBusqueda.size}"
+    }
+
+    private fun moverResultado(delta: Int) {
+        val total = resultadosBusqueda.size
+        if (total == 0) return
+        irAResultado((posResultado + delta + total) % total)
+    }
+
+    private fun mostrarBarraBusqueda() {
+        barraBusqueda?.dismiss()
+        val dp = resources.displayMetrics.density
+        fun boton(texto: String, accion: () -> Unit) = Button(this).apply {
+            text = texto
+            setOnClickListener { accion() }
+        }
+        val contador = TextView(this).apply {
+            setTextColor(Color.WHITE); textSize = 14f
+            setPadding((12 * dp).toInt(), 0, (12 * dp).toInt(), 0)
+        }
+        contadorBusqueda = contador
+        val fila = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#CC000000"))
+            setPadding((8 * dp).toInt(), (4 * dp).toInt(), (8 * dp).toInt(), (4 * dp).toInt())
+            addView(boton("◀") { moverResultado(-1) })
+            addView(contador)
+            addView(boton("▶") { moverResultado(1) })
+            addView(boton("✕") { cerrarBarraBusqueda(true) })
+        }
+        val popup = PopupWindow(
+            fila, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        popup.showAtLocation(
+            scrollText, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL,
+            0, (24 * dp).toInt())
+        barraBusqueda = popup
+    }
+
+    private fun cerrarBarraBusqueda(refrescar: Boolean = false) {
+        barraBusqueda?.dismiss()
+        barraBusqueda = null
+        contadorBusqueda = null
+        consultaResaltada = null
+        resultadosBusqueda = emptyList()
+        posResultado = -1
+        if (refrescar && chapterContents.isNotEmpty()) showCurrentContent()
     }
 
     private fun updateTtsEngineLabel() {
@@ -671,6 +771,7 @@ class ReaderActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        barraBusqueda?.dismiss()
         sound.release()
         tts.shutdown()
         saveProgress()
