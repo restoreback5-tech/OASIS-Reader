@@ -1,6 +1,10 @@
 package com.oasis.reader
 
 import android.app.AlertDialog
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Typeface
@@ -89,6 +93,18 @@ class ReaderActivity : AppCompatActivity() {
     private var posResultado = -1
     private var barraBusqueda: PopupWindow? = null
     private var contadorBusqueda: TextView? = null
+    
+    private val pedirNotificacion = registerForActivityResult(
+    ActivityResultContracts.RequestPermission()
+    ) { granted ->
+    if (!granted) {
+        Toast.makeText(
+            this@ReaderActivity,
+            "La notificación no se verá, pero la lectura seguirá.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+  }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -666,18 +682,25 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun startReading() {
-        if (chapterContents.isEmpty()) return
-        isPlaying = true
-        currentParagraphIndex = parrafoVisibleArriba()
-        readCurrentParagraph()
+    if (chapterContents.isEmpty()) return
+    if (Build.VERSION.SDK_INT >= 33 &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+        != PackageManager.PERMISSION_GRANTED) {
+        pedirNotificacion.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
+    LecturaService.start(this)
+    isPlaying = true
+    currentParagraphIndex = parrafoVisibleArriba()
+    readCurrentParagraph()
+  }
 
     private fun pauseReading() {
-        isPlaying = false
-        tts.stop()
-        saveProgress()
-        if (chapterContents.isNotEmpty()) showCurrentContent()
-    }
+    isPlaying = false
+    tts.stop()
+    saveProgress()
+    LecturaService.stop(this)
+    if (chapterContents.isNotEmpty()) showCurrentContent()
+}
 
     private fun splitTextForTts(text: String, maxLength: Int = 800): List<String> {
         if (text.length <= maxLength) return listOf(text)
@@ -884,11 +907,12 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        scrollSaveRunnable?.let { scrollHandler.removeCallbacks(it) }
-        barraBusqueda?.dismiss()
-        sound.release()
-        tts.shutdown()
-        saveProgress()
-    }
+    super.onDestroy()
+    scrollSaveRunnable?.let { scrollHandler.removeCallbacks(it) }
+    barraBusqueda?.dismiss()
+    sound.release()
+    tts.shutdown()
+    saveProgress()
+    LecturaService.stop(this)
+ }
 }
