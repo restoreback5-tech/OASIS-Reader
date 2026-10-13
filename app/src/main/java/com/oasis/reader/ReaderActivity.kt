@@ -648,38 +648,41 @@ class ReaderActivity : AppCompatActivity() {
         val chunks = splitTextForTts(text)
         var chunkIndex = 0
 
-        tts.speak(
-    text = chunks[chunkIndex],
-    onError = {
-        runOnUiThread {
-            pauseReading()
-            Toast.makeText(
-                this@ReaderActivity,
-                "La voz falló. Toca reproducir para continuar.",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    },
-    onDone = {
-        runOnUiThread {
-            chunkIndex++
-            speakNextChunk()
-        }
-    }
-  )
-            } else {
-                runOnUiThread {
-                    currentParagraphIndex++
-                    saveProgress()
-                    val totalParagraphs = chapterContents[currentChapterIndex].size
-                    turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
-                    readCurrentParagraph()
-                    showCurrentContent()
+            fun speakNextChunk() {
+        if (!isPlaying) return
+        if (chunkIndex < chunks.size) {
+            tts.speak(
+                text = chunks[chunkIndex],
+                onError = {
+                    runOnUiThread {
+                        pauseReading()
+                        Toast.makeText(
+                            this@ReaderActivity,
+                            "La voz falló. Toca reproducir para continuar.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                onDone = {
+                    runOnUiThread {
+                        chunkIndex++
+                        speakNextChunk()
+                    }
                 }
+            )
+        } else {
+            runOnUiThread {
+                currentParagraphIndex++
+                saveProgress()
+                val totalParagraphs = chapterContents[currentChapterIndex].size
+                turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
+                readCurrentParagraph()
+                showCurrentContent()
             }
         }
-        speakNextChunk()
     }
+    speakNextChunk()
+}
 
     private fun saveProgress() {
         prefs.edit().putInt("last_chapter_index", currentChapterIndex).apply()
