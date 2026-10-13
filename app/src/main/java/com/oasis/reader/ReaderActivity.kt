@@ -7,7 +7,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.text.Spannable
-import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import android.text.style.StyleSpan
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -28,6 +28,11 @@ import android.text.style.BackgroundColorSpan
 
 
 class ReaderActivity : AppCompatActivity() {
+
+    companion object {
+        private const val MAX_CHARS_POR_PARTE = 30_000
+        private val TTS_HIGHLIGHT = Color.parseColor("#332196F3")
+    }
 
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var scrollText: ScrollView
@@ -56,10 +61,10 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var turtleWidget: TurtleView
     private lateinit var tvTtsEngine: TextView
 
-    // Swipe
+    // Gestos
     private lateinit var gestureDetector: GestureDetector
     private var touchStartX = 0f
-    private var touchEndX = 0f
+    private var touchStartY = 0f
 
     // Datos del libro
     private var chapterTitles = mutableListOf<String>()
@@ -68,6 +73,13 @@ class ReaderActivity : AppCompatActivity() {
     private var currentParagraphIndex = 0
     private var isPlaying = false
     private var currentUri: Uri? = null
+
+    // Offsets de párrafos dentro del capítulo actual
+    private var parrafoOffsets = IntArray(0)
+
+    // Guardado con retardo
+    private val scrollHandler = Handler(Looper.getMainLooper())
+    private var scrollSaveRunnable: Runnable? = null
 
     private lateinit var epubParser: EpubParser
     private var parsedBook: EpubParser.ParsedEpub? = null
@@ -136,7 +148,7 @@ class ReaderActivity : AppCompatActivity() {
         }
 
         findViewById<ImageButton>(R.id.btn_chapters).setOnLongClickListener {
-    showSearchDialog(); true
+            showSearchDialog(); true
         }
 
         tvTtsEngine = findViewById(R.id.btn_tts_engine)
@@ -153,68 +165,56 @@ class ReaderActivity : AppCompatActivity() {
             loadBookFromUri(currentUri!!)
         }
 
-        // Configurar Swipe
+        // Gestos: swipe horizontal solo cambia de capítulo. El scroll vertical es nativo.
         gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                if (e1 != null) {
-                    touchStartX = e1.x
-                    touchEndX = e2.x
-                    handleSwipe()
+                if (e1 == null) return false
+                val dx = e2.x - e1.x
+                val dy = e2.y - e1.y
+                val minDx = 120 * resources.displayMetrics.density
+                if (abs(dx) >= minDx && abs(dx) >= 2 * abs(dy)) {
+                    if (dx < 0) irACapitulo(1) else irACapitulo(-1)
+                    return true
                 }
-                return true
+                return false
             }
         })
 
         scrollText.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
-            true
+            false
         }
-    }
 
-    private fun handleSwipe() {
-        val swipeThreshold = 100
-        val diff = touchStartX - touchEndX
-        if (abs(diff) > swipeThreshold) {
-            if (diff > 0) {
-                nextParagraph()
-            } else {
-                previousParagraph()
+        scrollText.setOnScrollChangeListener { _, _, _, _, _ ->
+            scrollSaveRunnable?.let { scrollHandler.removeCallbacks(it) }
+            scrollSaveRunnable = Runnable {
+                if (chapterContents.isNotEmpty() && !isPlaying) {
+                    val idx = parrafoVisibleArriba()
+                    prefs.edit().putInt("last_chapter_index", currentChapterIndex).apply()
+                    prefs.edit().putInt("last_paragraph_index", idx).apply()
+                }
             }
+            scrollHandler.postDelayed(scrollSaveRunnable!!, 500)
         }
     }
 
-    private fun nextParagraph() {
-        sound.play(R.raw.page_flip)
-        if (isPlaying) pauseReading()
-        val paragraphs = chapterContents.getOrNull(currentChapterIndex) ?: return
-        val totalParagraphs = paragraphs.size
-        if (currentParagraphIndex < totalParagraphs - 1) {
-            currentParagraphIndex++
-            showCurrentContent()
-            saveProgress()
-            turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
-        } else if (currentChapterIndex < chapterContents.size - 1) {
-            currentChapterIndex++
-            currentParagraphIndex = 0
-            showCurrentContent()
-            saveProgress()
-            turtleWidget.onPageAdvanced(currentParagraphIndex, chapterContents[currentChapterIndex].size)
+    private fun irACapitulo(delta: Int) {
+        val nuevo = currentChapterIndex + delta
+        if (nuevo < 0) {
+            Toast.makeText(this, "Primer capítulo", Toast.LENGTH_SHORT).show()
+            return
         }
-    }
-
-    private fun previousParagraph() {
-        sound.play(R.raw.page_flip)
-        if (isPlaying) pauseReading()
-        if (currentParagraphIndex > 0) {
-            currentParagraphIndex--
-            showCurrentContent()
-            saveProgress()
-        } else if (currentChapterIndex > 0) {
-            currentChapterIndex--
-            currentParagraphIndex = chapterContents[currentChapterIndex].size - 1
-            showCurrentContent()
-            saveProgress()
+        if (nuevo >= chapterContents.size) {
+            Toast.makeText(this, "Último capítulo", Toast.LENGTH_SHORT).show()
+            return
         }
+        if (isPlaying) pauseReading()
+        sound.play(R.raw.page_flip)
+        currentChapterIndex = nuevo
+        currentParagraphIndex = 0
+        showCurrentContent()
+        saveProgress()
+        scrollText.scrollTo(0, 0)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -255,40 +255,93 @@ class ReaderActivity : AppCompatActivity() {
             currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
             if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
             showCurrentContent()
+            scrollAParrafo(currentParagraphIndex)
             Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
-
         }
     }
 
     private fun showCurrentContent() {
-        if (currentChapterIndex < chapterContents.size) {
-            val title = chapterTitles[currentChapterIndex]
-            val paragraphs = chapterContents[currentChapterIndex]
-            val paragraphText = if (currentParagraphIndex < paragraphs.size) paragraphs[currentParagraphIndex] else paragraphs.lastOrNull() ?: ""
-            val spannable = SpannableString("$title\n\n$paragraphText")
-            spannable.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            
-            val consulta = consultaResaltada
-            val motor = buscador
-       if (consulta != null && motor != null) {
-            val off = title.length + 2
-            val actual = resultadosBusqueda.getOrNull(posResultado)
-            for (r in motor.coincidencias(paragraphText, consulta)) {
-             val esActual = actual != null && actual.capitulo == currentChapterIndex &&
-            actual.parrafo == currentParagraphIndex && actual.inicio == r.first
-        spannable.setSpan(
-            BackgroundColorSpan(if (esActual) Color.parseColor("#FF9800") else Color.YELLOW),
-            off + r.first, off + r.last + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-    }
-}
+        if (currentChapterIndex >= chapterContents.size) return
+        val title = chapterTitles[currentChapterIndex]
+        val paragraphs = chapterContents[currentChapterIndex]
 
-            tvBookContent.text = spannable
-            scrollText.scrollTo(0, 0)
+        val sb = SpannableStringBuilder()
+        sb.append(title)
+        sb.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        sb.append("\n\n")
+
+        val offsets = IntArray(paragraphs.size)
+        for (i in paragraphs.indices) {
+            offsets[i] = sb.length
+            sb.append(paragraphs[i])
+            if (i < paragraphs.size - 1) sb.append("\n\n")
         }
+        parrafoOffsets = offsets
+        
+             // Resaltado de búsqueda
+        val consulta = consultaResaltada
+        val motor = buscador
+        if (consulta != null && motor != null) {
+            val actual = resultadosBusqueda.getOrNull(posResultado)
+            for (i in paragraphs.indices) {
+                for (r in motor.coincidencias(paragraphs[i], consulta)) {
+                    val start = offsets[i] + r.first
+                    val end = offsets[i] + r.last + 1
+                    val esActual = actual != null && actual.capitulo == currentChapterIndex &&
+                        actual.parrafo == i && actual.inicio == r.first
+                    sb.setSpan(
+                        BackgroundColorSpan(if (esActual) Color.parseColor("#FF9800") else Color.YELLOW),
+                        start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+            }
+        }
+
+        // Resaltado del párrafo que está sonando
+        if (isPlaying && currentParagraphIndex in paragraphs.indices) {
+            val start = offsets[currentParagraphIndex]
+            val end = start + paragraphs[currentParagraphIndex].length
+            sb.setSpan(BackgroundColorSpan(TTS_HIGHLIGHT), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+
+        tvBookContent.text = sb
+    }
+
+    // Hace scroll hasta el párrafo indicado dentro del capítulo actual.
+    private fun scrollAParrafo(index: Int) {
+        if (index < 0 || index >= parrafoOffsets.size) return
+        val offset = parrafoOffsets[index]
+        tvBookContent.post {
+            val layout = tvBookContent.layout ?: return@post
+            val line = layout.getLineForOffset(offset)
+            val top = layout.getLineTop(line) + tvBookContent.top
+            scrollText.smoothScrollTo(0, top)
+        }
+    }
+
+    // Devuelve el índice del primer párrafo visible en pantalla.
+    private fun parrafoVisibleArriba(): Int {
+        if (parrafoOffsets.isEmpty()) return 0
+        val layout = tvBookContent.layout ?: return 0
+        val scrollY = scrollText.scrollY
+        val line = layout.getLineForVertical(scrollY)
+        val offset = layout.getLineStart(line)
+        var lo = 0
+        var hi = parrafoOffsets.size - 1
+        var result = 0
+        while (lo <= hi) {
+            val mid = (lo + hi) / 2
+            if (parrafoOffsets[mid] <= offset) {
+                result = mid
+                lo = mid + 1
+            } else {
+                hi = mid - 1
+            }
+        }
+        return result
     }
 
     // ---- Secciones ocultas (notas, abreviaturas, apéndices cortos...) ----
@@ -301,6 +354,38 @@ class ReaderActivity : AppCompatActivity() {
     private fun isSectionHidden(book: EpubParser.ParsedEpub, i: Int, manual: Set<String>): Boolean =
         book.chapterHidden.getOrElse(i) { false } || book.chapterTitles[i] in manual
 
+    // Parte un capítulo si supera el límite de caracteres. Devuelve títulos y contenidos.
+    private fun partirCapitulo(titulo: String, parrafos: List<String>): Pair<List<String>, List<List<String>>> {
+        var total = 0
+        for (p in parrafos) total += p.length
+        if (total <= MAX_CHARS_POR_PARTE) {
+            return Pair(listOf(titulo), listOf(parrafos))
+        }
+
+        val partes = mutableListOf<List<String>>()
+        var actual = mutableListOf<String>()
+        var actualChars = 0
+        for (p in parrafos) {
+            if (actualChars + p.length > MAX_CHARS_POR_PARTE && actual.isNotEmpty()) {
+                partes.add(actual)
+                actual = mutableListOf()
+                actualChars = 0
+            }
+            actual.add(p)
+            actualChars += p.length
+        }
+        if (actual.isNotEmpty()) partes.add(actual)
+
+        val titulos = mutableListOf<String>()
+        val contenidos = mutableListOf<List<String>>()
+        val totalPartes = partes.size
+        for (i in partes.indices) {
+            titulos.add("$titulo (${i + 1}/$totalPartes)")
+            contenidos.add(partes[i])
+        }
+        return Pair(titulos, contenidos)
+    }
+
     // Arma la lista de capítulos visibles. Si "mostrar ocultas" está activo, entran todas.
     private fun rebuildVisibleSections() {
         val book = parsedBook ?: return
@@ -310,8 +395,9 @@ class ReaderActivity : AppCompatActivity() {
         val contents = mutableListOf<List<String>>()
         for (i in book.chapterTitles.indices) {
             if (showAll || !isSectionHidden(book, i, manual)) {
-                titles.add(book.chapterTitles[i])
-                contents.add(book.chapterContents[i])
+                val (t, c) = partirCapitulo(book.chapterTitles[i], book.chapterContents[i])
+                titles.addAll(t)
+                contents.addAll(c)
             }
         }
         if (titles.isEmpty()) { // por si todo quedó oculto
@@ -380,11 +466,12 @@ class ReaderActivity : AppCompatActivity() {
                     toggleShowHiddenSections()
                 } else if (which != currentChapterIndex) {
                     sound.play(R.raw.page_flip)
+                    if (isPlaying) pauseReading()
                     currentChapterIndex = which
                     currentParagraphIndex = 0
-                    if (isPlaying) pauseReading()
                     showCurrentContent()
                     saveProgress()
+                    scrollText.scrollTo(0, 0)
                 }
             }
             .create()
@@ -406,8 +493,7 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
-
-            private fun leerHistorial(): List<String> =
+    private fun leerHistorial(): List<String> =
         (prefs.getString("historial_busquedas", "") ?: "").split("\n").filter { it.isNotBlank() }
 
     private fun guardarEnHistorial(q: String) {
@@ -494,6 +580,7 @@ class ReaderActivity : AppCompatActivity() {
         currentChapterIndex = r.capitulo
         currentParagraphIndex = r.parrafo
         showCurrentContent()
+        scrollAParrafo(r.parrafo)
         saveProgress()
         contadorBusqueda?.text = "${pos + 1} / ${resultadosBusqueda.size}"
     }
@@ -581,6 +668,7 @@ class ReaderActivity : AppCompatActivity() {
     private fun startReading() {
         if (chapterContents.isEmpty()) return
         isPlaying = true
+        currentParagraphIndex = parrafoVisibleArriba()
         readCurrentParagraph()
     }
 
@@ -588,6 +676,7 @@ class ReaderActivity : AppCompatActivity() {
         isPlaying = false
         tts.stop()
         saveProgress()
+        if (chapterContents.isNotEmpty()) showCurrentContent()
     }
 
     private fun splitTextForTts(text: String, maxLength: Int = 800): List<String> {
@@ -637,6 +726,7 @@ class ReaderActivity : AppCompatActivity() {
             if (currentChapterIndex < chapterContents.size) {
                 showCurrentContent()
                 saveProgress()
+                scrollText.scrollTo(0, 0)
                 readCurrentParagraph()
             } else {
                 pauseReading()
@@ -644,49 +734,60 @@ class ReaderActivity : AppCompatActivity() {
             }
             return
         }
+        
+            // Actualiza resaltado y scroll al párrafo que empieza a sonar
+        showCurrentContent()
+        scrollAParrafo(currentParagraphIndex)
+
         val text = paragraphs[currentParagraphIndex]
         val chunks = splitTextForTts(text)
         var chunkIndex = 0
 
-            fun speakNextChunk() {
-        if (!isPlaying) return
-        if (chunkIndex < chunks.size) {
-            tts.speak(
-                text = chunks[chunkIndex],
-                onError = {
-                    runOnUiThread {
-                        pauseReading()
-                        Toast.makeText(
-                            this@ReaderActivity,
-                            "La voz falló. Toca reproducir para continuar.",
-                            Toast.LENGTH_LONG
-                        ).show()
+        fun speakNextChunk() {
+            if (!isPlaying) return
+            if (chunkIndex < chunks.size) {
+                tts.speak(
+                    text = chunks[chunkIndex],
+                    onError = {
+                        runOnUiThread {
+                            pauseReading()
+                            Toast.makeText(
+                                this@ReaderActivity,
+                                "La voz falló. Toca reproducir para continuar.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    },
+                    onDone = {
+                        runOnUiThread {
+                            chunkIndex++
+                            speakNextChunk()
+                        }
                     }
-                },
-                onDone = {
-                    runOnUiThread {
-                        chunkIndex++
-                        speakNextChunk()
-                    }
+                )
+            } else {
+                runOnUiThread {
+                    currentParagraphIndex++
+                    saveProgress()
+                    readCurrentParagraph()
                 }
-            )
-        } else {
-            runOnUiThread {
-                currentParagraphIndex++
-                saveProgress()
-                val totalParagraphs = chapterContents[currentChapterIndex].size
-                turtleWidget.onPageAdvanced(currentParagraphIndex, totalParagraphs)
-                readCurrentParagraph()
-                showCurrentContent()
             }
         }
+        speakNextChunk()
     }
-    speakNextChunk()
-}
 
     private fun saveProgress() {
         prefs.edit().putInt("last_chapter_index", currentChapterIndex).apply()
         prefs.edit().putInt("last_paragraph_index", currentParagraphIndex).apply()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (chapterContents.isNotEmpty() && !isPlaying) {
+            val idx = parrafoVisibleArriba()
+            prefs.edit().putInt("last_chapter_index", currentChapterIndex).apply()
+            prefs.edit().putInt("last_paragraph_index", idx).apply()
+        }
     }
 
     private fun setupSliders() {
@@ -784,10 +885,10 @@ class ReaderActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        scrollSaveRunnable?.let { scrollHandler.removeCallbacks(it) }
         barraBusqueda?.dismiss()
         sound.release()
         tts.shutdown()
         saveProgress()
     }
 }
-
