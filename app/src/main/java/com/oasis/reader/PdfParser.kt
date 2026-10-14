@@ -47,7 +47,7 @@ class PdfParser(private val context: Context) {
     // Palabra partida con guion de fin de línea: "consti-\ntucional"
     private val guionFinLineaRegex = Regex("([\\p{L}])\\s*[-–]\\s*\\n\\s*([\\p{L}])")
 
-    // Línea que solo contiene un número (posible número de página), con guiones opcionales: "- 12 -"
+    // Línea que solo contiene un número (número de página), con guiones opcionales: "- 12 -"
     private val lineaSoloNumerosRegex = Regex("^[-–—\\s]*\\d+[-–—\\s]*$")
 
     // Títulos de nivel superior al inicio de línea.
