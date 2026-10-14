@@ -19,20 +19,21 @@ jobs:
         distribution: 'temurin'
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    - name: Setup local.properties with Secrets
+    - name: Setup local.properties
       run: |
         echo "sdk.dir=${ANDROID_HOME}" > local.properties
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+      run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build-output.log
     - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
-    - name: Upload build logs on failure
-      if: failure()
+    - name: Upload build log
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: build-logs
-        path: ~/.gradle/daemon/*/build.log
+        name: build-log
+        path: build-output.log
         if-no-files-found: ignore
