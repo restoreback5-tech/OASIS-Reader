@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, experimental-tortuga ]
+    branches: [ main, experimental-tortuga, pdf-parser ]
   pull_request:
     branches: [ main ]
 
