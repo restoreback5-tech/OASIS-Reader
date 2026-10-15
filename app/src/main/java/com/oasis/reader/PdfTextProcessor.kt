@@ -1,5 +1,7 @@
 package com.oasis.reader
 
+import java.text.Normalizer
+
 /** El PDF no tiene texto extraíble (es un escaneo). */
 class PdfEscaneadoException(message: String) : Exception(message)
 
@@ -8,6 +10,12 @@ class PdfEscaneadoException(message: String) : Exception(message)
  * en capítulos y párrafos. No corrige ni reescribe el contenido jurídico:
  * solo quita ruido (encabezados, pies, números de página), une líneas cortadas
  * y separa párrafos.
+ *
+ * Capítulos, por orden de confianza:
+ *  1. Títulos que aparecen en el índice del propio libro ("3.1. Transporte ... 21").
+ *  2. Títulos con palabra clave: Libro, Título, Capítulo, Sección, Parte, Transitorios...
+ *  3. Secciones numeradas ("1. Introducción") si hay al menos 3 y no hay índice.
+ *  4. Grupos de 10 páginas.
  */
 object PdfTextProcessor {
 
@@ -23,12 +31,15 @@ object PdfTextProcessor {
     private const val PAGINAS_POR_GRUPO = 10
     private const val MAX_PARRAFO = 2500
     private const val MAX_TITULO = 120
+    private const val VENTANA_BORDE = 6
+    private const val PAGINAS_INDICE = 40
 
     private val RE_ESPACIOS = Regex("\\s+")
     private val RE_ROMANO = Regex("^(?=[IVXLC])C{0,3}(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
     private val RE_NUM_PAG = Regex("^\\s*[-–—]?\\s*(\\d{1,4})\\s*[-–—]?\\s*$")
     private val RE_ROMANO_PAG = Regex("^\\s*[-–—]?\\s*(?=[ivxlc])c{0,3}(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})\\s*[-–—]?\\s*$", RegexOption.IGNORE_CASE)
     private val RE_PAGINA_DE = Regex("^\\s*(p[áa]gina|p[áa]g\\.?|page)\\s*\\d{1,4}(\\s*(de|/|of)\\s*\\d{1,4})?\\s*$", RegexOption.IGNORE_CASE)
+    private val RE_TOKEN_NUMERAL = Regex("^[\\d.,:;()\\-–—]+$")
 
     private val RE_CLAVE_TITULO = Regex(
         "^(LIBRO|T[ÍI]TULO|CAP[ÍI]TULO|SECCI[ÓO]N|PARTE|UNIDAD|TEMA|LECCI[ÓO]N|M[ÓO]DULO)\\s+(\\S+)(.*)$",
@@ -50,7 +61,15 @@ object PdfTextProcessor {
     private val RE_FIN_FRASE_FUERTE = Regex("[.:?!]$")
     private val RE_ALFANUM_OK = Regex("^[(\\[]?\\d+(-?[A-Za-z]{1,5}|[ºo°ª])?[)\\].,;:]*$")
 
-    private class Parrafo(val texto: String, val pagina: Int, val esTitulo: Boolean)
+    // Índice del libro y secciones numeradas
+    private val RE_LIDERES = Regex("(\\.{3,}|(?:\\.\\s){3,}|…)")
+    private val RE_ENTRADA_INDICE = Regex(
+        "^(?:(\\d{1,2}(?:\\.\\d{1,2}){0,3})[.)]?\\s+)?(\\S.*?)\\s*(?:\\.{3,}|(?:\\.\\s){3,}|…+)\\s*[\\dIVXLCivxlc]{1,5}$"
+    )
+    private val RE_NUMERADO = Regex("^(\\d{1,2}(?:\\.\\d{1,2}){0,3})[.)]?\\s+(\\S.{1,89})$")
+    private val RE_PAGINA_AL_FINAL = Regex("\\s\\d{1,4}$")
+
+    private class Parrafo(val texto: String, val pagina: Int, val esTitulo: Boolean, val generico: Boolean = false)
     private class Linea(val texto: String, val pagina: Int)
 
     @Throws(PdfEscaneadoException::class)
@@ -69,7 +88,7 @@ object PdfTextProcessor {
         val promedio = totalCaracteres.toDouble() / n
         if (sinTexto.toDouble() / n >= 0.6 || promedio < 60.0) {
             throw PdfEscaneadoException(
-                "Este PDF parece un escaneo (imágenes sin texto seleccionable). " +
+                "Este PDF parece un escaneo: solo ${n - sinTexto} de $n páginas tienen texto seleccionable. " +
                     "Por ahora solo se pueden leer PDFs con texto; usa una versión con OCR."
             )
         }
@@ -77,27 +96,32 @@ object PdfTextProcessor {
         // 2) Limpiar páginas (encabezados, pies, números)
         val paginas = limpiarPaginas(paginasCrudas)
 
-        // 3) Aplanar y unir líneas en párrafos
+        // 3) Índice del libro (si lo tiene)
+        val indice = extraerIndice(paginas)
+
+        // 4) Aplanar y unir líneas en párrafos
         val lineas = ArrayList<Linea>()
         for ((i, lista) in paginas.withIndex()) {
-            var ultimaVacia = true
-            for (l in lista) {
-                val t = l.replace("­", "-").replace(RE_ESPACIOS, " ").trim()
-                if (t.isEmpty()) {
-                    if (!ultimaVacia) lineas.add(Linea("", i))
-                    ultimaVacia = true
-                } else {
-                    lineas.add(Linea(t, i)); ultimaVacia = false
-                }
-            }
+            val limpias = lista.map { quitarGuionSuave(it).replace(RE_ESPACIOS, " ").trim() }
+            var a = 0
+            var b = limpias.size
+            while (a < b && limpias[a].isEmpty()) a++
+            while (b > a && limpias[b - 1].isEmpty()) b--
+            for (k in a until b) lineas.add(Linea(limpias[k], i))
         }
-        val parrafos = armarParrafos(lineas)
+        var parrafos = armarParrafos(lineas, indice)
+        if (parrafos.isEmpty()) throw PdfEscaneadoException("No se encontró texto legible en el PDF.")
 
-        // 4) Calidad (OCR dudoso)
+        // Secciones numeradas sin respaldo del índice: solo valen si hay varias y no son la mayoría del texto.
+        val genericos = parrafos.count { it.generico }
+        if (genericos in 1..2 || genericos > parrafos.size / 4) {
+            parrafos = parrafos.map { if (it.generico) Parrafo(it.texto, it.pagina, false) else it }
+        }
+
+        // 5) Calidad (OCR dudoso)
         val calidadBaja = textoSospechoso(parrafos)
 
-        // 5) Capítulos
-        if (parrafos.isEmpty()) throw PdfEscaneadoException("No se encontró texto legible en el PDF.")
+        // 6) Capítulos
         val titulosDetectados = parrafos.count { it.esTitulo }
         return if (titulosDetectados >= 2) {
             val (t, c) = capitulosPorTitulos(parrafos)
@@ -110,13 +134,33 @@ object PdfTextProcessor {
 
     // ---------------------------------------------------------------- limpieza
 
-    private fun normalizarClave(s: String): String =
+    private fun quitarGuionSuave(s: String): String {
+        val base = if (s.endsWith("­")) s.dropLast(1) + "-" else s
+        return base.replace("­", "")
+    }
+
+    private fun esNumeral(t: String): Boolean =
+        RE_TOKEN_NUMERAL.matches(t) || RE_ROMANO.matches(t.uppercase())
+
+    /** Clave exacta (para no duplicar títulos repetidos). */
+    private fun claveExacta(s: String): String =
         s.lowercase().replace(Regex("\\d+"), "#").replace(RE_ESPACIOS, " ").trim()
+
+    /** Clave aproximada de una línea de borde: sin números romanos/arábigos al inicio o al final, solo letras. */
+    private fun claveBorde(s: String): String {
+        val tokens = s.trim().split(RE_ESPACIOS).dropWhile { esNumeral(it) }.dropLastWhile { esNumeral(it) }
+        return tokens.joinToString("").lowercase().filter { it.isLetter() }.take(20)
+    }
+
+    private fun letrasClave(s: String): String =
+        Normalizer.normalize(s, Normalizer.Form.NFD).lowercase().filter { it in 'a'..'z' }.take(24)
 
     private fun indicesBorde(lineas: List<String>): List<Int> {
         val no = lineas.indices.filter { lineas[it].isNotBlank() }
         if (no.isEmpty()) return emptyList()
-        return (no.take(2) + no.takeLast(2)).distinct()
+        // En páginas cortas la ventana se reduce, para no tocar el texto del cuerpo.
+        val v = minOf(VENTANA_BORDE, maxOf(2, no.size / 4))
+        return (no.take(v) + no.takeLast(v)).distinct()
     }
 
     private fun esNumeroPagina(s: String): Boolean =
@@ -130,7 +174,7 @@ object PdfTextProcessor {
         val conteo = HashMap<String, Int>()
         if (n >= 6) {
             for (lineas in listas) {
-                val claves = indicesBorde(lineas).map { normalizarClave(lineas[it]) }.toSet()
+                val claves = indicesBorde(lineas).map { claveBorde(lineas[it]) }.filter { it.length >= 4 }.toSet()
                 for (k in claves) conteo[k] = (conteo[k] ?: 0) + 1
             }
         }
@@ -142,40 +186,75 @@ object PdfTextProcessor {
                 val t = lineas[i].trim()
                 if (esNumeroPagina(t)) { quitar.add(i); continue }
                 if (n >= 6 && t.length <= 120) {
-                    val k = normalizarClave(t)
+                    val k = claveBorde(t)
                     val protegida = RE_ARTICULO.containsMatchIn(t) || RE_MARCADOR.containsMatchIn(t) ||
                         esTituloBasico(t)
-                    if (!protegida && (conteo[k] ?: 0) >= umbral) quitar.add(i)
+                    if (k.length >= 4 && !protegida && (conteo[k] ?: 0) >= umbral) quitar.add(i)
                 }
             }
             lineas.filterIndexed { i, _ -> i !in quitar }
         }
     }
 
-    // ---------------------------------------------------------------- títulos
+    // ---------------------------------------------------------------- índice y secciones numeradas
+
+    /** Claves "numero|letras" de las entradas del índice (líneas con puntos guía y número de página). */
+    private fun extraerIndice(paginas: List<List<String>>): Set<String> {
+        val res = HashSet<String>()
+        for (p in paginas.take(PAGINAS_INDICE)) {
+            for (raw in p) {
+                val s = raw.replace(RE_ESPACIOS, " ").trim()
+                if (s.length < 6 || s.length > 160) continue
+                val m = RE_ENTRADA_INDICE.find(s) ?: continue
+                val letras = letrasClave(m.groupValues[2])
+                if (letras.length >= 3) res.add(m.groupValues[1] + "|" + letras)
+            }
+        }
+        return res
+    }
+
+    /** 0 = no es título; 1 = respaldado por el índice; 2 = sección numerada sin índice. */
+    private fun analizarNumerado(s: String, indice: Set<String>): Int {
+        if (s.length > 100 || RE_LIDERES.containsMatchIn(s)) return 0
+        val m = RE_NUMERADO.find(s)
+        if (m != null) {
+            val num = m.groupValues[1]
+            val texto = m.groupValues[2].trim()
+            if ("$num|${letrasClave(texto)}" in indice) return 1
+            if (indice.size >= 3) return 0
+            if (!texto[0].isUpperCase() || texto.length > 80) return 0
+            if (texto.last() in ".,;:)") return 0
+            if (RE_PAGINA_AL_FINAL.containsMatchIn(texto)) return 0
+            if (texto.split(' ').size > 12) return 0
+            return 2
+        }
+        if (indice.isNotEmpty() && s.length in 3..100 && !s.endsWith(".") && ("|" + letrasClave(s)) in indice) return 1
+        return 0
+    }
+
+    // ---------------------------------------------------------------- títulos con palabra clave
 
     /** Detección sin contexto (para proteger líneas de la limpieza). */
     private fun esTituloBasico(s: String): Boolean = analizarTitulo(s, true) != null
 
     /**
-     * Devuelve el texto normalizado del título, o null si no lo es.
+     * Devuelve el texto del título, o null si no lo es.
      * [inicioBloque] = la línea anterior cerró una frase (o es el inicio).
      */
     private fun analizarTitulo(s: String, inicioBloque: Boolean): String? {
         if (s.length > 100 || s.isEmpty() || !s[0].isUpperCase()) return null
         if (RE_TITULO_SUELTO.matches(s)) return s
         val m = RE_CLAVE_TITULO.find(s) ?: return null
-        val clave = m.groupValues[1]
         var num = m.groupValues[2]
         val resto = m.groupValues[3]
         num = num.trimEnd('.', ':', '-', '–', '—', ')', '°', 'º')
         val numeralValido = (num.length in 1..3 && num.all { it.isDigit() }) ||
             RE_ROMANO.matches(num) || RE_ORDINAL.matches(num)
         if (!numeralValido) return null
-        if (s.contains("...") || s.contains("…") || s.contains(". . .")) return null // índice con puntos
+        if (RE_LIDERES.containsMatchIn(s) || s.contains(". . .")) return null // índice con puntos
         val restoLimpio = resto.trimStart(' ', '.', ':', '-', '–', '—').trim()
         if (restoLimpio.isNotEmpty()) {
-            if (Regex("\\s\\d{1,4}$").containsMatchIn(restoLimpio) && restoLimpio.any { it.isLetter() }) return null
+            if (RE_PAGINA_AL_FINAL.containsMatchIn(restoLimpio) && restoLimpio.any { it.isLetter() }) return null
             if (restoLimpio.last() in ",;") return null
             if (RE_REFERENCIA_EN_TEXTO.containsMatchIn(restoLimpio)) return null
             // "Capítulo II de los delitos": solo si empieza bloque y es corto
@@ -195,7 +274,7 @@ object PdfTextProcessor {
 
     private fun terminaFrase(s: String) = RE_FIN_FRASE.containsMatchIn(s)
 
-    private fun armarParrafos(lineas: List<Linea>): List<Parrafo> {
+    private fun armarParrafos(lineas: List<Linea>, indice: Set<String>): List<Parrafo> {
         val largos = lineas.filter { it.texto.length >= 20 }.map { it.texto.length }.sorted()
         val ancho = if (largos.isEmpty()) 80.0 else largos[(largos.size * 0.9).toInt().coerceAtMost(largos.size - 1)].toDouble()
 
@@ -203,6 +282,7 @@ object PdfTextProcessor {
         val sb = StringBuilder()
         var paginaInicio = 0
         var previa: String? = null
+        var vacias = 0
 
         fun cerrar() {
             if (sb.isNotEmpty()) {
@@ -215,15 +295,28 @@ object PdfTextProcessor {
         while (i < lineas.size) {
             val l = lineas[i]
             val t = l.texto
-            if (t.isEmpty()) { cerrar(); previa = null; i++; continue }
+            // Un renglón en blanco aislado no separa párrafos (muchos PDFs lo meten entre líneas);
+            // tres o más seguidos sí.
+            if (t.isEmpty()) {
+                vacias++
+                if (vacias == 3) { cerrar(); previa = null }
+                i++
+                continue
+            }
+            vacias = 0
 
             val cierreAnterior = previa == null || terminaFrase(previa) || previa.length < 0.6 * ancho
-            val titulo = analizarTitulo(t, cierreAnterior)
+            var titulo = analizarTitulo(t, cierreAnterior)
+            var tipo = if (titulo != null) 3 else 0
+            if (titulo == null) {
+                val num = analizarNumerado(t, indice)
+                if (num == 1 || (num == 2 && cierreAnterior)) { titulo = t; tipo = num }
+            }
             if (titulo != null) {
                 cerrar()
-                var texto = titulo
+                var texto: String = titulo
                 // "CAPÍTULO I" y el nombre en la línea siguiente
-                if (esSoloClave(titulo) && i + 1 < lineas.size) {
+                if (tipo == 3 && esSoloClave(titulo) && i + 1 < lineas.size) {
                     val sig = lineas[i + 1].texto
                     if (sig.isNotEmpty() && sig.length <= 80 && analizarTitulo(sig, true) == null &&
                         !RE_ARTICULO.containsMatchIn(sig) && !sig.endsWith(".")
@@ -231,7 +324,7 @@ object PdfTextProcessor {
                         texto = "$titulo $sig"; i++
                     }
                 }
-                res.add(Parrafo(texto, l.pagina, true))
+                res.add(Parrafo(texto, l.pagina, true, tipo == 2))
                 previa = null
                 i++
                 continue
@@ -295,7 +388,7 @@ object PdfTextProcessor {
             if (tituloActual == null && cuerpo.isEmpty()) return
             val nombre = tituloActual ?: "Inicio"
             val lista = ArrayList<String>()
-            if (tituloActual != null) lista.addAll(partesTitulo.map { it })
+            if (tituloActual != null) lista.addAll(partesTitulo)
             lista.addAll(cuerpo)
             if (lista.isEmpty()) lista.add(nombre)
             titulos.add(recortar(nombre))
@@ -304,7 +397,7 @@ object PdfTextProcessor {
 
         for (p in parrafos) {
             if (p.esTitulo) {
-                val clave = normalizarClave(p.texto)
+                val clave = claveExacta(p.texto)
                 if (clave == ultimaClave) continue            // encabezado corrido repetido
                 ultimaClave = clave
                 if (tituloActual != null && cuerpo.isEmpty()) {
