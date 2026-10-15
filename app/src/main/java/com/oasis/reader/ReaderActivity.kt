@@ -86,6 +86,9 @@ class ReaderActivity : AppCompatActivity() {
     private var scrollSaveRunnable: Runnable? = null
 
     private lateinit var epubParser: EpubParser
+    private val pdfParser by lazy { PdfParser(this, contentResolver) }
+    private var hiloCarga: Thread? = null
+    private var dialogoCarga: AlertDialog? = null
     private var parsedBook: EpubParser.ParsedEpub? = null
     private var buscador: BuscadorLibro? = null
     private var consultaResaltada: String? = null
@@ -151,7 +154,7 @@ class ReaderActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btn_play).setOnClickListener {
             sound.play(R.raw.touch)
             if (chapterContents.isEmpty()) {
-                Toast.makeText(this, "Primero selecciona un libro EPUB", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Primero selecciona un libro (EPUB o PDF)", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             if (isPlaying) pauseReading()
@@ -177,8 +180,7 @@ class ReaderActivity : AppCompatActivity() {
         // Restaurar último libro si existe
         val lastBookUri = prefs.getString("last_book_uri", null)
         if (!lastBookUri.isNullOrEmpty()) {
-            currentUri = Uri.parse(lastBookUri)
-            loadBookFromUri(currentUri!!)
+            loadBookFromUri(Uri.parse(lastBookUri))
         }
 
         // Gestos: swipe horizontal solo cambia de capítulo. El scroll vertical es nativo.
@@ -243,8 +245,6 @@ class ReaderActivity : AppCompatActivity() {
                     e.printStackTrace()
                 }
                 sound.play(R.raw.confirmar)
-                currentUri = uri
-                prefs.edit().putString("last_book_uri", uri.toString()).apply()
                 loadBookFromUri(uri)
             }
         }
@@ -253,29 +253,106 @@ class ReaderActivity : AppCompatActivity() {
     private fun openFileSelector() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/epub+zip"
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/epub+zip", "application/pdf"))
         }
         startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
     }
 
+    // Detecta PDF por su cabecera "%PDF-", sin fiarse del tipo MIME ni de la extensión.
+    private fun esPdf(uri: Uri): Boolean = try {
+        contentResolver.openInputStream(uri)?.use { s ->
+            val b = ByteArray(5)
+            s.read(b) == 5 && String(b, Charsets.ISO_8859_1) == "%PDF-"
+        } ?: false
+    } catch (e: Exception) {
+        false
+    }
+
+    // Lee el libro (EPUB o PDF) en segundo plano y lo aplica al terminar.
     private fun loadBookFromUri(uri: Uri) {
-        try {
-            val parsed = epubParser.parse(uri)
-            if (parsed.chapterContents.isEmpty()) {
-                Toast.makeText(this, "No se encontraron capítulos en el EPUB", Toast.LENGTH_LONG).show()
-                return
+        if (hiloCarga?.isAlive == true) {
+            Toast.makeText(this, "Ya se está cargando un libro", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dialogo = AlertDialog.Builder(this)
+            .setMessage("Abriendo libro…")
+            .setCancelable(false)
+            .setNegativeButton("Cancelar") { _, _ -> hiloCarga?.interrupt() }
+            .create()
+        dialogo.show()
+        dialogoCarga = dialogo
+
+        hiloCarga = Thread {
+            var libro: EpubParser.ParsedEpub? = null
+            var error: Throwable? = null
+            var aviso: String? = null
+            try {
+                if (esPdf(uri)) {
+                    val p = pdfParser
+                    libro = p.parse(uri) { hecho, total ->
+                        if (hecho % 10 == 0 || hecho == total) {
+                            runOnUiThread { dialogo.setMessage("Leyendo PDF… $hecho de $total páginas") }
+                        }
+                    }
+                    aviso = p.aviso
+                } else {
+                    libro = epubParser.parse(uri)
+                }
+            } catch (e: Throwable) {
+                error = e
             }
-            parsedBook = parsed
-            rebuildVisibleSections()
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (dialogo.isShowing) dialogo.dismiss()
+                val fallo = error
+                val parsed = libro
+                if (fallo != null || parsed == null) {
+                    if (fallo !is InterruptedException) {
+                        fallo?.printStackTrace()
+                        AlertDialog.Builder(this)
+                            .setTitle("No se pudo abrir el libro")
+                            .setMessage(fallo?.message ?: "Error desconocido")
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
+                } else {
+                    aplicarLibro(parsed, uri, aviso)
+                }
+            }
+        }.also { it.start() }
+    }
+
+    private fun aplicarLibro(parsed: EpubParser.ParsedEpub, uri: Uri, aviso: String?) {
+        if (parsed.chapterContents.isEmpty()) {
+            Toast.makeText(this, "No se encontraron capítulos en el libro", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (isPlaying) pauseReading()
+        // Se retoma el avance solo si es el mismo libro que se leía; si es otro, empieza desde el inicio.
+        val mismoLibro = uri.toString() == prefs.getString("last_book_uri", null)
+        currentUri = uri
+        prefs.edit().putString("last_book_uri", uri.toString()).apply()
+        parsedBook = parsed
+        rebuildVisibleSections()
+        if (mismoLibro) {
             currentChapterIndex = prefs.getInt("last_chapter_index", 0).coerceIn(0, chapterContents.size - 1)
             currentParagraphIndex = prefs.getInt("last_paragraph_index", 0)
-            if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
-            showCurrentContent()
-            scrollAParrafo(currentParagraphIndex)
-            Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
+        } else {
+            currentChapterIndex = 0
+            currentParagraphIndex = 0
+        }
+        if (currentParagraphIndex >= chapterContents[currentChapterIndex].size) currentParagraphIndex = 0
+        showCurrentContent()
+        scrollAParrafo(currentParagraphIndex)
+        if (!mismoLibro) saveProgress()
+        Toast.makeText(this, "Libro cargado: ${chapterTitles.size} capítulos", Toast.LENGTH_SHORT).show()
+        if (aviso != null) {
+            AlertDialog.Builder(this)
+                .setTitle("Aviso")
+                .setMessage(aviso)
+                .setPositiveButton("OK", null)
+                .show()
         }
     }
 
@@ -521,7 +598,7 @@ class ReaderActivity : AppCompatActivity() {
 
     private fun showSearchDialog() {
         if (chapterContents.isEmpty()) {
-            Toast.makeText(this, "Primero selecciona un libro EPUB", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Primero selecciona un libro (EPUB o PDF)", Toast.LENGTH_SHORT).show()
             return
         }
         val motor = buscador ?: BuscadorLibro(chapterContents).also { buscador = it }
@@ -910,6 +987,8 @@ class ReaderActivity : AppCompatActivity() {
     super.onDestroy()
     scrollSaveRunnable?.let { scrollHandler.removeCallbacks(it) }
     barraBusqueda?.dismiss()
+    hiloCarga?.interrupt()
+    dialogoCarga?.dismiss()
     sound.release()
     tts.shutdown()
     saveProgress()
