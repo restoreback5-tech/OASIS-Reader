@@ -1,6 +1,7 @@
 package com.oasis.reader
 
 import android.app.AlertDialog
+import android.app.ProgressDialog
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -86,6 +87,7 @@ class ReaderActivity : AppCompatActivity() {
     private var scrollSaveRunnable: Runnable? = null
 
     private lateinit var epubParser: EpubParser
+    private lateinit var pdfParser: PdfParser
     private var parsedBook: EpubParser.ParsedEpub? = null
     private var buscador: BuscadorLibro? = null
     private var consultaResaltada: String? = null
@@ -114,6 +116,7 @@ class ReaderActivity : AppCompatActivity() {
         sound = SoundModule(this)
         tts = TTSModule(this)
         epubParser = EpubParser(contentResolver)
+        pdfParser = PdfParser(this, contentResolver)
 
         drawerLayout = findViewById(R.id.drawer_layout)
         scrollText = findViewById(R.id.scroll_text)
@@ -251,16 +254,17 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun openFileSelector() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/epub+zip"
-        }
-        startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
+    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        addCategory(Intent.CATEGORY_OPENABLE)
+        type = "*/*"
+        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/epub+zip", "application/pdf"))
     }
+    startActivityForResult(intent, REQUEST_CODE_OPEN_DOCUMENT)
+}
 
-    private fun loadBookFromUri(uri: Uri) {
-        try {
-            val parsed = epubParser.parse(uri)
+    private fun cargarEpub(uri: Uri) {
+    try {
+        val parsed = epubParser.parse(uri)
             if (parsed.chapterContents.isEmpty()) {
                 Toast.makeText(this, "No se encontraron capítulos en el EPUB", Toast.LENGTH_LONG).show()
                 return
@@ -278,6 +282,68 @@ class ReaderActivity : AppCompatActivity() {
             Toast.makeText(this, "Error al leer el libro: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
+    
+    private fun loadBookFromUri(uri: Uri) {
+    val mime = contentResolver.getType(uri)
+    if (mime == "application/pdf") cargarPdf(uri) else cargarEpub(uri)
+}
+
+    private fun cargarPdf(uri: Uri) {
+    val progress = ProgressDialog(this).apply {
+        setMessage("Cargando PDF…")
+        setCancelable(false)
+        show()
+    }
+    Thread {
+        try {
+            val doc = pdfParser.parse(uri)
+            val (titles, contents) = convertirAFlat(doc)
+            runOnUiThread {
+                progress.dismiss()
+                if (titles.isEmpty()) {
+                    Toast.makeText(this, "No se encontraron capítulos legibles en el PDF", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                chapterTitles = titles
+                chapterContents = contents
+                currentChapterIndex = 0
+                currentParagraphIndex = 0
+                showCurrentContent()
+                scrollAParrafo(0)
+                val msg = pdfParser.aviso ?: "PDF cargado: ${chapterTitles.size} capítulos"
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            runOnUiThread {
+                progress.dismiss()
+                Toast.makeText(this, "Error al leer el PDF: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }.start()
+}
+
+/**
+ * Convierte el árbol jerárquico a listas planas para reutilizar el render actual.
+ * Fase 2.4.1: puente temporal. En la Fase 2.4.2 se navega el árbol directamente.
+ */
+private fun convertirAFlat(doc: DocumentoEstructurado): Pair<MutableList<String>, MutableList<List<String>>> {
+    val titulos = mutableListOf<String>()
+    val contenidos = mutableListOf<List<String>>()
+    fun recorrer(n: Nodo) {
+        if (n.oculto) return
+        if (n.contenido.isNotEmpty() || n.articulos.isNotEmpty()) {
+            val titulo = n.pathTitulos.ifEmpty { n.titulo }
+            if (titulo.isNotEmpty()) {
+                titulos.add(titulo)
+                contenidos.add(n.contenido.toList())
+            }
+        }
+        for (h in n.hijos) recorrer(h)
+    }
+    for (h in doc.raiz.hijos) recorrer(h)
+    return Pair(titulos, contenidos)
+}
 
     private fun showCurrentContent() {
         if (currentChapterIndex >= chapterContents.size) return
