@@ -60,7 +60,7 @@ data class DocumentoEstructurado(
 data class Nodo(
     val nivel: Int,
     val titulo: String,
-    val contenido: List<String> = emptyList(),
+    val contenido: MutableList<String> = mutableListOf(),
     val hijos: MutableList<Nodo> = mutableListOf(),
     val articulos: MutableList<Articulo> = mutableListOf(),
     var oculto: Boolean = false,
