@@ -49,13 +49,19 @@ object PdfTextProcessor {
         "^(ART[ÍI]CULOS\\s+TRANSITORIOS|DISPOSICIONES\\s+TRANSITORIAS|TRANSITORIOS|DISPOSICIONES\\s+FINALES|EXPOSICI[ÓO]N\\s+DE\\s+MOTIVOS|CONSIDERANDO)\\s*:?$"
     )
     private val RE_ORDINAL = Regex(
-        "^(PRIMER[OA]?|SEGUND[OA]|TERCER[OA]?|CUART[OA]|QUINT[OA]|SEXT[OA]|S[ÉE]PTIM[OA]|OCTAV[OA]|NOVEN[OA]|D[ÉE]CIM[OA]|[ÚU]NIC[OA]|PRELIMINAR)$",
+        "^(PRIMER[OA]?|SEGUND[OA]|TERCER[OA]?|CUART[OA]|QUINT[OA]|SEXT[OA]|S[ÉE]PTIM[OA]|OCTAV[OA]|NOVEN[OA]|D[ÉE]CIM[OA]|UND[ÉE]CIM[OA]|DUOD[ÉE]CIM[OA]|" +
+            "VIG[ÉE]SIM[OA]|TRIG[ÉE]SIM[OA]|CUADRAG[ÉE]SIM[OA]|QUINCUAG[ÉE]SIM[OA]|SEXAG[ÉE]SIM[OA]|" +
+            "SEPTUAG[ÉE]SIM[OA]|OCTOG[ÉE]SIM[OA]|NONAG[ÉE]SIM[OA]|CENT[ÉE]SIM[OA]|VEINTI\\w+|[ÚU]NIC[OA]|PRELIMINAR)$",
         RegexOption.IGNORE_CASE
     )
     private val RE_REFERENCIA_EN_TEXTO = Regex(
         "^(de\\s+(esta|este|la\\s+presente|el\\s+presente|la\\s+ley|el\\s+c[óo]digo)|del\\s+(presente|c[óo]digo)|y\\s+siguientes|y\\s+los|y\\s+las|,|;|se\\s|que\\s)"
     )
     private val RE_ARTICULO = Regex("^(Art[ií]culo|ART[ÍI]CULO|Art\\.)\\s*\\d+")
+    private val RE_ARTICULO_SOLO = Regex(
+        "^(Art[ií]culo|ART[ÍI]CULO)\\s+\\d+\\s*(Bis|bis|BIS|Ter|TER|Qu[aá]ter|[A-Z]|º|o\\.?)?\\s*\\.?$"
+    )
+    private val RE_ART_NUM = Regex("^(Art[ií]culo|ART[ÍI]CULO)\\s+(\\d+)")
     private val RE_MARCADOR = Regex("^(([IVXLC]{1,6}|\\d{1,2})[.)]|[a-zñ]\\)|\\([a-zñ0-9]{1,4}\\)|[•▪●])\\s+")
     private val RE_FIN_FRASE = Regex("([.:;?!]|[;,]\\s+(y|o|e))$")
     private val RE_FIN_FRASE_FUERTE = Regex("[.:?!]$")
@@ -109,7 +115,7 @@ object PdfTextProcessor {
             while (b > a && limpias[b - 1].isEmpty()) b--
             for (k in a until b) lineas.add(Linea(limpias[k], i))
         }
-        var parrafos = armarParrafos(lineas, indice)
+        var parrafos = repararNumeracion(armarParrafos(lineas, indice))
         if (parrafos.isEmpty()) throw PdfEscaneadoException("No se encontró texto legible en el PDF.")
 
         // Secciones numeradas sin respaldo del índice: solo valen si hay varias y no son la mayoría del texto.
@@ -316,12 +322,16 @@ object PdfTextProcessor {
                 cerrar()
                 var texto: String = titulo
                 // "CAPÍTULO I" y el nombre en la línea siguiente
-                if (tipo == 3 && esSoloClave(titulo) && i + 1 < lineas.size) {
-                    val sig = lineas[i + 1].texto
-                    if (sig.isNotEmpty() && sig.length <= 80 && analizarTitulo(sig, true) == null &&
-                        !RE_ARTICULO.containsMatchIn(sig) && !sig.endsWith(".")
-                    ) {
-                        texto = "$titulo $sig"; i++
+                if (tipo == 3 && esSoloClave(titulo)) {
+                    var j = i + 1
+                    while (j < lineas.size && j <= i + 3 && lineas[j].texto.isEmpty()) j++
+                    if (j < lineas.size) {
+                        val sig = lineas[j].texto
+                        if (sig.isNotEmpty() && sig.length <= 80 && analizarTitulo(sig, true) == null &&
+                            !RE_ARTICULO.containsMatchIn(sig) && !sig.endsWith(".")
+                        ) {
+                            texto = "$titulo $sig"; i = j
+                        }
                     }
                 }
                 res.add(Parrafo(texto, l.pagina, true, tipo == 2))
@@ -333,6 +343,7 @@ object PdfTextProcessor {
             val empiezaMayus = t[0].isUpperCase() || t[0].isDigit() || t[0] in "«“\"¿¡(["
             val nuevo = when {
                 previa == null -> true
+                RE_ARTICULO_SOLO.matches(t) -> true
                 RE_ARTICULO.containsMatchIn(t) -> terminaFrase(previa) || previa.length < 0.6 * ancho
                 RE_MARCADOR.containsMatchIn(t) -> terminaFrase(previa) || previa.length < 0.6 * ancho
                 sb.length > MAX_PARRAFO && RE_FIN_FRASE_FUERTE.containsMatchIn(previa) && empiezaMayus -> true
@@ -370,6 +381,40 @@ object PdfTextProcessor {
             } else { limpio.add(res[j]); j++ }
         }
         return limpio
+    }
+
+    /**
+     * Si un número de nota quedó pegado al artículo ("Artículo 72" por "Artículo 7" + nota 2),
+     * se detecta porque rompe la secuencia y se corrige solo si al quitarle 1 o 2 cifras
+     * resulta exactamente el artículo siguiente al anterior.
+     */
+    private fun repararNumeracion(parrafos: List<Parrafo>): List<Parrafo> {
+        var ultimo = -1L
+        val res = ArrayList<Parrafo>(parrafos.size)
+        for (p in parrafos) {
+            val m = if (p.esTitulo) null else RE_ART_NUM.find(p.texto)
+            if (m == null) { res.add(p); continue }
+            val digitos = m.groupValues[2]
+            val n = digitos.toLongOrNull()
+            if (n == null || digitos.length > 9) { res.add(p); continue }
+            var valor: Long = n
+            var texto = p.texto
+            if (ultimo >= 0 && n > ultimo + 1) {
+                for (corte in 1..2) {
+                    if (digitos.length <= corte) break
+                    val c = digitos.dropLast(corte).toLong()
+                    if (c == ultimo + 1) {
+                        val g = m.groups[2]!!
+                        texto = texto.substring(0, g.range.first) + c + texto.substring(g.range.last + 1)
+                        valor = c
+                        break
+                    }
+                }
+            }
+            ultimo = valor
+            res.add(if (texto == p.texto) p else Parrafo(texto, p.pagina, p.esTitulo, p.generico))
+        }
+        return res
     }
 
     // ---------------------------------------------------------------- capítulos

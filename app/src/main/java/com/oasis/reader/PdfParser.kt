@@ -7,7 +7,6 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
-import com.tom_roush.pdfbox.text.PDFTextStripper
 
 /**
  * Lee un PDF con texto y lo entrega como EpubParser.ParsedEpub.
@@ -37,18 +36,14 @@ class PdfParser(private val context: Context, private val contentResolver: Conte
             val total = doc.numberOfPages
             if (total == 0) throw Exception("El PDF no tiene páginas.")
 
-            val stripper = PDFTextStripper().apply {
-                sortByPosition = true
-                lineSeparator = "\n"
-            }
+            val extractor = PdfExtraccion(doc)
+            extractor.calibrar()
             val paginas = ArrayList<String>(total)
             var fallidas = 0
             for (i in 1..total) {
                 if (Thread.currentThread().isInterrupted) throw InterruptedException("Carga cancelada.")
                 val texto = try {
-                    stripper.startPage = i
-                    stripper.endPage = i
-                    stripper.getText(doc)
+                    extractor.pagina(i)
                 } catch (e: InterruptedException) {
                     throw e
                 } catch (e: Exception) {
