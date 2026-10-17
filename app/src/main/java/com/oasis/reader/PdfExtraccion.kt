@@ -9,7 +9,9 @@ import com.tom_roush.pdfbox.text.TextPosition
  * "sobrescritos" (las llamadas de nota que se pegan al número de artículo, como
  * "Artículo 7" + nota 2 = "Artículo 72"). Se apoya en el tamaño de letra:
  *  - caracteres claramente más chicos que el cuerpo del texto (< 70 %) se descartan;
- *  - palabras pequeñas (< 85 %) en la parte baja de la página (nota al pie, número de página) se descartan.
+ *  - palabras pequeñas (< 85 %) en la parte baja de la página (nota al pie, número de página) se descartan;
+ *  - notas de reforma intercaladas en el texto ("Artículo reformado DOF 30-11-2012"), que vienen en letra
+ *    algo menor (< 95 %), se descartan en cualquier parte de la página.
  * Si el PDF no permite medir el tamaño, extrae sin filtrar.
  */
 class PdfExtraccion(private val doc: PDDocument) {
@@ -30,6 +32,9 @@ class PdfExtraccion(private val doc: PDDocument) {
     }
 
     private class Filtro(var base: Float) : PDFTextStripper() {
+        private val reNota = Regex("(reformad|adicionad|derogad|recorrid|fe de erratas|DOF\\s*\\d)", RegexOption.IGNORE_CASE)
+        private var notaPrevia = false
+
         override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
             if (base <= 0f || textPositions.isEmpty()) {
                 super.writeString(text, textPositions); return
@@ -40,6 +45,12 @@ class PdfExtraccion(private val doc: PDDocument) {
             val alto = primera.pageHeight
             val relY = if (alto > 0f) primera.yDirAdj / alto else 0f
             if (max < base * 0.85f && relY > 0.55f) return          // nota al pie / número de página
+            // Nota de reforma intercalada (letra algo menor); sus líneas de continuación también.
+            if (max < base * 0.95f) {
+                if (notaPrevia || reNota.containsMatchIn(text)) { notaPrevia = true; return }
+            } else {
+                notaPrevia = false
+            }
             if (text.length == textPositions.size) {
                 val sb = StringBuilder()
                 val keep = ArrayList<TextPosition>(textPositions.size)

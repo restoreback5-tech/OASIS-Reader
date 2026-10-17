@@ -30,7 +30,7 @@ object PdfTextProcessor {
 
     private const val PAGINAS_POR_GRUPO = 10
     private const val MAX_PARRAFO = 2500
-    private const val MAX_TITULO = 120
+    private const val MAX_TITULO = 160
     private const val VENTANA_BORDE = 6
     private const val PAGINAS_INDICE = 40
 
@@ -39,6 +39,7 @@ object PdfTextProcessor {
     private val RE_NUM_PAG = Regex("^\\s*[-–—]?\\s*(\\d{1,4})\\s*[-–—]?\\s*$")
     private val RE_ROMANO_PAG = Regex("^\\s*[-–—]?\\s*(?=[ivxlc])c{0,3}(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})\\s*[-–—]?\\s*$", RegexOption.IGNORE_CASE)
     private val RE_PAGINA_DE = Regex("^\\s*(p[áa]gina|p[áa]g\\.?|page)\\s*\\d{1,4}(\\s*(de|/|of)\\s*\\d{1,4})?\\s*$", RegexOption.IGNORE_CASE)
+    private val RE_N_DE_M = Regex("^\\s*\\d{1,4}\\s+de\\s+\\d{1,4}\\s*$", RegexOption.IGNORE_CASE)
     private val RE_TOKEN_NUMERAL = Regex("^[\\d.,:;()\\-–—]+$")
 
     private val RE_CLAVE_TITULO = Regex(
@@ -46,8 +47,21 @@ object PdfTextProcessor {
         RegexOption.IGNORE_CASE
     )
     private val RE_TITULO_SUELTO = Regex(
-        "^(ART[ÍI]CULOS\\s+TRANSITORIOS|DISPOSICIONES\\s+TRANSITORIAS|TRANSITORIOS|DISPOSICIONES\\s+FINALES|EXPOSICI[ÓO]N\\s+DE\\s+MOTIVOS|CONSIDERANDO)\\s*:?$"
+        "^(ART[ÍI]CULOS\\s+TRANSITORIOS|DISPOSICIONES\\s+TRANSITORIAS|TRANSITORIOS|DISPOSICIONES\\s+FINALES|EXPOSICI[ÓO]N\\s+DE\\s+MOTIVOS|CONSIDERANDO)\\s*:?$",
+        RegexOption.IGNORE_CASE
     )
+    // Notas de reforma que el Diario Oficial intercala en el texto: "Artículo reformado DOF 30-11-2012".
+    private const val SUSTANTIVOS_NOTA = "(?:Art[ií]culo|P[aá]rrafo|Fracci[oó]n|Inciso|Cap[ií]tulo|T[ií]tulo|Secci[oó]n|Denominaci[oó]n|Apartado|Numeral|Libro|Subinciso|Letra|Ep[ií]grafe)"
+    private const val PARTICIPIO_NOTA = "(?:reformad|adicionad|derogad|recorrid|modificad|suprimid|sustituid)[oa]s?"
+    private val RE_NOTA_REFORMA = Regex(
+        "^(?:$SUSTANTIVOS_NOTA\\s+)?$PARTICIPIO_NOTA\\b.{0,160}?\\bDOF\\b.*$|^Fe de erratas\\b.{0,80}\\bDOF\\b.*$",
+        RegexOption.IGNORE_CASE
+    )
+    private val RE_NOTA_AL_FINAL = Regex(
+        "\\s+$SUSTANTIVOS_NOTA\\s+$PARTICIPIO_NOTA\\b.{0,160}?\\bDOF\\b.*$",
+        RegexOption.IGNORE_CASE
+    )
+    private val RE_SOLO_FECHAS = Regex("^\\d{1,2}-\\d{1,2}-\\d{2,4}(?:\\s*(?:,|;|y|e)\\s*\\d{1,2}-\\d{1,2}-\\d{2,4})*\\s*\\.?$")
     private val RE_ORDINAL = Regex(
         "^(PRIMER[OA]?|SEGUND[OA]|TERCER[OA]?|CUART[OA]|QUINT[OA]|SEXT[OA]|S[ÉE]PTIM[OA]|OCTAV[OA]|NOVEN[OA]|D[ÉE]CIM[OA]|UND[ÉE]CIM[OA]|DUOD[ÉE]CIM[OA]|" +
             "VIG[ÉE]SIM[OA]|TRIG[ÉE]SIM[OA]|CUADRAG[ÉE]SIM[OA]|QUINCUAG[ÉE]SIM[OA]|SEXAG[ÉE]SIM[OA]|" +
@@ -62,7 +76,7 @@ object PdfTextProcessor {
         "^(Art[ií]culo|ART[ÍI]CULO)\\s+\\d+\\s*(Bis|bis|BIS|Ter|TER|Qu[aá]ter|[A-Z]|º|o\\.?)?\\s*\\.?$"
     )
     private val RE_ART_NUM = Regex("^(Art[ií]culo|ART[ÍI]CULO)\\s+(\\d+)")
-    private val RE_MARCADOR = Regex("^(([IVXLC]{1,6}|\\d{1,2})[.)]|[a-zñ]\\)|\\([a-zñ0-9]{1,4}\\)|[•▪●])\\s+")
+    private val RE_MARCADOR = Regex("^(([IVXLC]{1,6}|\\d{1,2})[.)]-?|[a-zñ]\\)|\\([a-zñ0-9]{1,4}\\)|[•▪●])\\s+")
     private val RE_FIN_FRASE = Regex("([.:;?!]|[;,]\\s+(y|o|e))$")
     private val RE_FIN_FRASE_FUERTE = Regex("[.:?!]$")
     private val RE_ALFANUM_OK = Regex("^[(\\[]?\\d+(-?[A-Za-z]{1,5}|[ºo°ª])?[)\\].,;:]*$")
@@ -120,7 +134,8 @@ object PdfTextProcessor {
 
         // Secciones numeradas sin respaldo del índice: solo valen si hay varias y no son la mayoría del texto.
         val genericos = parrafos.count { it.generico }
-        if (genericos in 1..2 || genericos > parrafos.size / 4) {
+        val porClave = parrafos.count { it.esTitulo && !it.generico }
+        if (genericos in 1..2 || genericos > parrafos.size / 4 || porClave >= 3) {
             parrafos = parrafos.map { if (it.generico) Parrafo(it.texto, it.pagina, false) else it }
         }
 
@@ -170,7 +185,22 @@ object PdfTextProcessor {
     }
 
     private fun esNumeroPagina(s: String): Boolean =
-        RE_NUM_PAG.matches(s) || RE_ROMANO_PAG.matches(s) || RE_PAGINA_DE.matches(s)
+        RE_NUM_PAG.matches(s) || RE_ROMANO_PAG.matches(s) || RE_PAGINA_DE.matches(s) || RE_N_DE_M.matches(s)
+
+    /** Quita las notas de reforma del DOF ("Artículo reformado DOF …") sueltas o pegadas al final de una línea. */
+    private fun quitarNotasReforma(lineas: List<String>): List<String> {
+        val res = ArrayList<String>(lineas.size)
+        var nota = false
+        for (l in lineas) {
+            val t = l.trim()
+            if (t.isNotEmpty() && t.length <= 400 && RE_NOTA_REFORMA.matches(t)) { nota = true; continue }
+            if (nota && t.isNotEmpty() && RE_SOLO_FECHAS.matches(t)) continue   // fechas que siguen a la nota
+            if (t.isNotEmpty()) nota = false
+            val m = if (t.length <= 400) RE_NOTA_AL_FINAL.find(l) else null
+            res.add(if (m != null && m.range.first > 0) l.substring(0, m.range.first).trimEnd() else l)
+        }
+        return res
+    }
 
     private fun limpiarPaginas(crudas: List<String>): List<List<String>> {
         val n = crudas.size
@@ -186,7 +216,8 @@ object PdfTextProcessor {
         }
         val umbral = maxOf(3, (n * 0.3).toInt())
 
-        return listas.map { lineas ->
+        return listas.map { lineasBrutas ->
+            val lineas = quitarNotasReforma(lineasBrutas)
             val quitar = HashSet<Int>()
             for (i in indicesBorde(lineas)) {
                 val t = lineas[i].trim()
@@ -271,10 +302,52 @@ object PdfTextProcessor {
         return s
     }
 
+    private val RE_SUFIJO_TITULO = Regex("^(BIS|TER|QU[ÁA]TER|QUINQUIES|SEXIES|SEPTIES|OCTIES|[A-Z])$", RegexOption.IGNORE_CASE)
+
+    /**
+     * "CAPÍTULO I", "Capítulo III BIS", "CAPÍTULO DÉCIMO TERCERO": la clave sola, sin nombre.
+     * Lo que sobra tras el primer numeral solo puede ser otro numeral (ordinal compuesto) o un sufijo bis/ter.
+     */
     private fun esSoloClave(s: String): Boolean {
         val m = RE_CLAVE_TITULO.find(s) ?: return false
-        return m.groupValues[3].trimStart(' ', '.', ':', '-', '–', '—').trim().isEmpty()
+        val resto = m.groupValues[3].trimStart(' ', '.', ':', '-', '–', '—').trim()
+        if (resto.isEmpty()) return true
+        val palabras = resto.split(' ').filter { it.isNotEmpty() }
+        if (palabras.size > 2) return false
+        return palabras.all { w ->
+            val x = w.trimEnd('.', ':', ',', '-', '–', '—')
+            RE_ORDINAL.matches(x) || RE_SUFIJO_TITULO.matches(x) || RE_ROMANO.matches(x.uppercase())
+        }
     }
+
+    private val RE_CONECTOR_FINAL = Regex("(,|\\s(y|o|e|u|de|del|la|las|los|el|en|a|al|para|con|por|que|sus|su|se))$", RegexOption.IGNORE_CASE)
+
+    private fun esMayusculas(s: String): Boolean {
+        val letras = s.filter { it.isLetter() }
+        return letras.length >= 6 && letras.count { it.isUpperCase() } >= letras.length * 0.9
+    }
+
+    /** Número de nota pegado al final del nombre ("DESINTOXICACIÓN84"). */
+    private fun quitarNotaPegada(s: String): String = s.replace(Regex("(?<=\\p{L})\\d{1,3}$"), "")
+
+    /** ¿Esta línea puede ser (parte de) el nombre de un capítulo que viene en la línea siguiente a su clave? */
+    private fun aceptaNombre(sig: String, primera: Boolean, despues: String): Boolean {
+        if (sig.isEmpty() || sig.length > 110) return false
+        if (analizarTitulo(sig, true) != null) return false
+        if (RE_ARTICULO.containsMatchIn(sig) || RE_ARTICULO_SOLO.matches(sig) || RE_MARCADOR.containsMatchIn(sig)) return false
+        if (esNumeroPagina(sig) || RE_NUM_PAG.matches(sig)) return false
+        if (primera) {
+            if (!sig[0].isUpperCase()) return false
+            if (sig.length > 80 && !esMayusculas(sig)) return false
+        }
+        // Un punto final solo vale si lo que sigue ya es el articulado.
+        if (sig.endsWith(".") && !RE_ARTICULO.containsMatchIn(despues) && !RE_ARTICULO_SOLO.matches(despues)) return false
+        return true
+    }
+
+    /** El nombre sigue en la línea de abajo: termina en conector/coma, o es una línea larga en mayúsculas. */
+    private fun nombreAbierto(sig: String): Boolean =
+        !sig.endsWith(".") && (RE_CONECTOR_FINAL.containsMatchIn(sig) || (esMayusculas(sig) && sig.length >= 30))
 
     // ---------------------------------------------------------------- párrafos
 
@@ -325,13 +398,15 @@ object PdfTextProcessor {
                 if (tipo == 3 && esSoloClave(titulo)) {
                     var j = i + 1
                     while (j < lineas.size && j <= i + 3 && lineas[j].texto.isEmpty()) j++
-                    if (j < lineas.size) {
-                        val sig = lineas[j].texto
-                        if (sig.isNotEmpty() && sig.length <= 80 && analizarTitulo(sig, true) == null &&
-                            !RE_ARTICULO.containsMatchIn(sig) && !sig.endsWith(".")
-                        ) {
-                            texto = "$titulo $sig"; i = j
-                        }
+                    var partes = 0
+                    while (j < lineas.size && partes < 4) {
+                        val sig = quitarNotaPegada(lineas[j].texto)
+                        var k2 = j + 1
+                        while (k2 < lineas.size && k2 <= j + 3 && lineas[k2].texto.isEmpty()) k2++
+                        val despues = lineas.getOrNull(k2)?.texto ?: ""
+                        if (!aceptaNombre(sig, partes == 0, despues)) break
+                        texto = "$texto $sig"; i = j; partes++; j++
+                        if (!nombreAbierto(sig)) break   // el nombre ya terminó
                     }
                 }
                 res.add(Parrafo(texto, l.pagina, true, tipo == 2))
@@ -347,6 +422,7 @@ object PdfTextProcessor {
                 RE_ARTICULO.containsMatchIn(t) -> terminaFrase(previa) || previa.length < 0.6 * ancho
                 RE_MARCADOR.containsMatchIn(t) -> terminaFrase(previa) || previa.length < 0.6 * ancho
                 sb.length > MAX_PARRAFO && RE_FIN_FRASE_FUERTE.containsMatchIn(previa) && empiezaMayus -> true
+                sb.length > 3 * MAX_PARRAFO && RE_FIN_FRASE.containsMatchIn(previa) -> true
                 RE_FIN_FRASE_FUERTE.containsMatchIn(previa) && previa.length < 0.8 * ancho && empiezaMayus -> true
                 else -> false
             }
